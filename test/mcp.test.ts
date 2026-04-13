@@ -29,6 +29,8 @@ vi.mock("../src/config.js", () => ({
     shroudProvider: "anthropic",
     hermesConfigDir: "~/.hermes",
   },
+  requireVaultId: () => "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+  requireApiKey: () => "ocv_test_key_123",
 }));
 
 import { buildMcpEntry, patchHermesConfig } from "../src/mcp/index.js";

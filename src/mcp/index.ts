@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { config } from "../config.js";
+import { config, requireVaultId, requireApiKey } from "../config.js";
 import { getClient } from "../client.js";
 import { VaultError } from "../errors.js";
 
@@ -56,7 +56,7 @@ export async function patchHermesConfig(configDir: string): Promise<void> {
 
   const client = getClient();
   const tokenResponse = await client.auth.agentToken({
-    api_key: config.oneClawAgentApiKey,
+    api_key: requireApiKey(),
   });
 
   if (tokenResponse.error || !tokenResponse.data) {
@@ -68,7 +68,7 @@ export async function patchHermesConfig(configDir: string): Promise<void> {
 
   const entry = buildMcpEntry(
     tokenResponse.data.access_token,
-    config.oneClawVaultId,
+    requireVaultId(),
   );
 
   const mcpServers =

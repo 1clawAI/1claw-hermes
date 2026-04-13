@@ -1,4 +1,4 @@
-import { config } from "../config.js";
+import { requireVaultId } from "../config.js";
 import { getClient, createScopedClient } from "../client.js";
 import { VaultError } from "../errors.js";
 import type { OneclawClient } from "@1claw/sdk";
@@ -16,8 +16,9 @@ export async function getSecret(
   secretPath: string,
   ctx?: AgentContext,
 ): Promise<string> {
+  const vaultId = requireVaultId();
   const client = resolveClient(ctx);
-  const res = await client.secrets.get(config.oneClawVaultId, secretPath);
+  const res = await client.secrets.get(vaultId, secretPath);
 
   if (res.error || !res.data) {
     throw new VaultError(
@@ -34,12 +35,9 @@ export async function setSecret(
   value: string,
   ctx?: AgentContext,
 ): Promise<void> {
+  const vaultId = requireVaultId();
   const client = resolveClient(ctx);
-  const res = await client.secrets.set(
-    config.oneClawVaultId,
-    secretPath,
-    value,
-  );
+  const res = await client.secrets.set(vaultId, secretPath, value);
 
   if (res.error) {
     throw new VaultError(
@@ -53,8 +51,9 @@ export async function listSecrets(
   prefix: string,
   ctx?: AgentContext,
 ): Promise<string[]> {
+  const vaultId = requireVaultId();
   const client = resolveClient(ctx);
-  const res = await client.secrets.list(config.oneClawVaultId, prefix);
+  const res = await client.secrets.list(vaultId, prefix);
 
   if (res.error || !res.data) {
     throw new VaultError(

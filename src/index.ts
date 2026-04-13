@@ -1,5 +1,6 @@
-export { loadConfig, type Config } from "./config.js";
+export { loadConfig, needsBootstrap, requireVaultId, requireApiKey, type Config } from "./config.js";
 export { getClient } from "./client.js";
+export { bootstrap, type BootstrapOptions, type BootstrapResult } from "./bootstrap.js";
 export { buildMcpEntry, patchHermesConfig } from "./mcp/index.js";
 export { getSecret, setSecret, listSecrets } from "./mcp/tools.js";
 export type { AgentContext } from "./mcp/tools.js";

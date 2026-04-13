@@ -1,5 +1,5 @@
 import { createClient, type OneclawClient } from "@1claw/sdk";
-import { config } from "./config.js";
+import { config, requireApiKey } from "./config.js";
 
 let _client: OneclawClient | null = null;
 
@@ -12,7 +12,7 @@ export function getClient(): OneclawClient {
   if (!_client) {
     _client = createClient({
       baseUrl: config.oneClawApiBase,
-      apiKey: config.oneClawAgentApiKey,
+      apiKey: requireApiKey(),
     });
   }
   return _client;

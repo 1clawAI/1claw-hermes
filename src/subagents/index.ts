@@ -1,4 +1,4 @@
-import { config } from "../config.js";
+import { requireVaultId } from "../config.js";
 import { getClient } from "../client.js";
 import { VaultError } from "../errors.js";
 import type { AgentPolicy } from "./policy.js";
@@ -59,6 +59,7 @@ export async function provisionSubagent(
     hookInstalled = true;
   }
 
+  const vaultId = requireVaultId();
   const client = getClient();
 
   const createRes = await client.agents.create({
@@ -66,7 +67,7 @@ export async function provisionSubagent(
     description: `Hermes subagent: ${name}`,
     auth_method: "api_key",
     token_ttl_seconds: policy.expiresAfterSeconds,
-    vault_ids: [config.oneClawVaultId],
+    vault_ids: [vaultId],
     intents_api_enabled: policy.allowedChains.length > 0,
     tx_allowed_chains: policy.allowedChains.length > 0 ? policy.allowedChains : undefined,
     tx_max_value_eth: policy.maxValueEth ?? undefined,
@@ -91,7 +92,7 @@ export async function provisionSubagent(
 
   for (const secretPath of policy.secretPaths) {
     const grantRes = await client.access.grantAgent(
-      config.oneClawVaultId,
+      vaultId,
       agent.id,
       policy.permissions,
       {
@@ -143,16 +144,17 @@ export async function deprovisionSubagent(
   agentId: string,
   registry: SubagentRegistry = defaultRegistry,
 ): Promise<void> {
+  const vaultId = requireVaultId();
   const client = getClient();
 
-  const grants = await client.access.listGrants(config.oneClawVaultId);
+  const grants = await client.access.listGrants(vaultId);
   if (grants.data) {
     const agentPolicies = grants.data.policies.filter(
       (p: { principal_id: string }) => p.principal_id === agentId,
     );
     await Promise.allSettled(
       agentPolicies.map((p: { id: string }) =>
-        client.access.revoke(config.oneClawVaultId, p.id),
+        client.access.revoke(vaultId, p.id),
       ),
     );
   }

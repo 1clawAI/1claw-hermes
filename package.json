@@ -5,9 +5,13 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "1claw-hermes-bootstrap": "./dist/bootstrap-cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
+    "bootstrap": "tsx src/bootstrap-cli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -19,6 +23,7 @@
   "devDependencies": {
     "typescript": "^5.4.0",
     "vitest": "^1.4.0",
+    "tsx": "^4.0.0",
     "@types/node": "^20.0.0"
   }
 }
