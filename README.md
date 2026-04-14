@@ -140,6 +140,14 @@ This does **everything**:
 
 Switch back to Hermes and run `/reload-mcp`. Done.
 
+### Hermes restart vs the sidecar
+
+**Hermes and the sidecar are two different processes.** `pnpm setup` patches Hermes to use `model.base_url: http://127.0.0.1:8080/v1`, but **Hermes does not start or supervise the sidecar**. If you restart Hermes (or your machine) and nothing is listening on port **8080**, chat will fail with `APIConnectionError` / connection refused until you start the sidecar again.
+
+**Quick fix after a restart:** from the `1claw-hermes` package directory, run `pnpm shroud` (or `pnpm setup` again) so the sidecar is up, then use Hermes as usual.
+
+**Long-running setup:** run the sidecar under **systemd**, **Docker**, **tmux**, or your process manager so it survives Hermes restarts. See `scripts/shroud-sidecar.service.example` for a systemd user unit (after `pnpm build`, point `WorkingDirectory` and optional `ONECLAW_ENV_FILE` at your paths).
+
 ### Which `.env` file?
 
 `pnpm setup` and `pnpm shroud` resolve credentials in this order:

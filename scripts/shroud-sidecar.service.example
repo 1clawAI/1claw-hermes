@@ -1,0 +1,28 @@
+# Example systemd user unit — keep the Shroud sidecar running across Hermes restarts.
+#
+# 1. pnpm build   (so dist/shroud/sidecar.js exists)
+# 2. Copy and edit % paths and Environment= lines:
+#    cp scripts/shroud-sidecar.service.example ~/.config/systemd/user/1claw-shroud-sidecar.service
+# 3. systemctl --user daemon-reload
+# 4. systemctl --user enable --now 1claw-shroud-sidecar.service
+# 5. curl -s http://127.0.0.1:8080/healthz
+#
+# Hermes only points at http://127.0.0.1:8080/v1 — it does not start this process.
+
+[Unit]
+Description=1Claw Shroud sidecar (Hermes LLM proxy)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/path/to/1claw/packages/1claw-hermes
+ExecStart=/usr/bin/node dist/shroud/sidecar.js
+Environment=NODE_ENV=production
+Environment=ONECLAW_DEFAULT_PROVIDER=google
+# Environment=ONECLAW_ENV_FILE=%h/.hermes/hermes-agent/1claw-hermes/.env
+
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
