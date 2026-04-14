@@ -7,6 +7,8 @@
 # 4. systemctl --user enable --now 1claw-shroud-sidecar.service
 # 5. curl -s http://127.0.0.1:8080/healthz
 #
+# Boot without an interactive login (user units): loginctl enable-linger "$USER"
+#
 # Hermes only points at http://127.0.0.1:8080/v1 — it does not start this process.
 
 [Unit]
@@ -21,7 +23,8 @@ Environment=NODE_ENV=production
 Environment=ONECLAW_DEFAULT_PROVIDER=google
 # Environment=ONECLAW_ENV_FILE=%h/.hermes/hermes-agent/1claw-hermes/.env
 
-Restart=on-failure
+# on-failure = restart only after crash; use "always" if you want restart after any exit
+Restart=always
 RestartSec=5
 
 [Install]

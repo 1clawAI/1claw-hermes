@@ -146,7 +146,30 @@ Switch back to Hermes and run `/reload-mcp`. Done.
 
 **Quick fix after a restart:** from the `1claw-hermes` package directory, run `pnpm shroud` (or `pnpm setup` again) so the sidecar is up, then use Hermes as usual.
 
-**Long-running setup:** run the sidecar under **systemd**, **Docker**, **tmux**, or your process manager so it survives Hermes restarts. See `scripts/shroud-sidecar.service.example` for a systemd user unit (after `pnpm build`, point `WorkingDirectory` and optional `ONECLAW_ENV_FILE` at your paths).
+**Long-running setup:** use a process manager so the sidecar survives Hermes restarts and reboots — see **Keep the sidecar running** below.
+
+### Keep the sidecar running
+
+Hermes does not supervise the sidecar. Pick one:
+
+| Approach | When to use |
+|----------|-------------|
+| **systemd (user)** | Linux Hermes host — start on login/boot, restart on crash |
+| **launchd** | macOS — same idea (see `scripts/shroud-sidecar.launchd.plist.example`) |
+| **tmux / screen** | Quick manual persistence (survives closing the terminal tab if the session stays up) |
+| **Docker / compose** | If you already run services in containers |
+
+**systemd (Linux), outline:**
+
+1. In the `1claw-hermes` package: `pnpm install && pnpm build`.
+2. Copy `scripts/shroud-sidecar.service.example` to `~/.config/systemd/user/1claw-shroud-sidecar.service` and edit `WorkingDirectory`, `ExecStart` (`node` path), and `Environment=` / `ONECLAW_ENV_FILE` to match your machine.
+3. `systemctl --user daemon-reload && systemctl --user enable --now 1claw-shroud-sidecar.service`
+4. User units often need **`loginctl enable-linger "$USER"`** so the service can start at boot **without** an interactive login.
+5. Check: `curl -s http://127.0.0.1:8080/healthz`
+
+The unit runs **`node dist/shroud/sidecar.js`** (same as `pnpm shroud`): it loads `.env`, may append `ONECLAW_AGENT_ID`, then spawns the `shroud-sidecar` binary.
+
+**macOS:** copy and edit `scripts/shroud-sidecar.launchd.plist.example` into `~/Library/LaunchAgents/`, then `launchctl load` / `launchctl start` (see comments in the plist).
 
 ### Which `.env` file?
 

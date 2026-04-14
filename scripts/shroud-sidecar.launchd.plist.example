@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent — keep the Shroud sidecar running for Hermes.
+
+  1. pnpm install && pnpm build  (in the 1claw-hermes package)
+  2. Edit WorkingDirectory, ProgramArguments[0] (node path: `which node`), and ONECLAW_ENV_FILE.
+  3. cp scripts/shroud-sidecar.launchd.plist.example ~/Library/LaunchAgents/com.1claw.shroud-sidecar.plist
+  4. launchctl load ~/Library/LaunchAgents/com.1claw.shroud-sidecar.plist
+  5. launchctl start com.1claw.shroud-sidecar
+  6. curl -s http://127.0.0.1:8080/healthz
+
+  Logs: ~/Library/Logs/1claw-shroud-sidecar.{stdout,stderr}.log (create files first: touch …)
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.1claw.shroud-sidecar</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/YOU/path/to/1claw-hermes</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>dist/shroud/sidecar.js</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>ONECLAW_DEFAULT_PROVIDER</key>
+    <string>google</string>
+    <key>ONECLAW_ENV_FILE</key>
+    <string>/Users/YOU/path/to/.env</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/YOU/Library/Logs/1claw-shroud-sidecar.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/Library/Logs/1claw-shroud-sidecar.stderr.log</string>
+</dict>
+</plist>
