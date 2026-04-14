@@ -150,16 +150,16 @@ Switch back to Hermes and run `/reload-mcp`. Done.
 
 ### Keep the sidecar running
 
-Hermes does not supervise the sidecar. Pick one:
+Hermes does not supervise the sidecar. On a **dedicated Hermes machine**, production setups are usually **Linux** (servers, desktops) or **macOS** (developer Macs); both run the same **`pnpm shroud` / `node dist/shroud/sidecar.js`** stack — only the process manager differs.
 
 | Approach | When to use |
 |----------|-------------|
-| **systemd (user)** | Linux Hermes host — start on login/boot, restart on crash |
-| **launchd** | macOS — same idea (see `scripts/shroud-sidecar.launchd.plist.example`) |
-| **tmux / screen** | Quick manual persistence (survives closing the terminal tab if the session stays up) |
-| **Docker / compose** | If you already run services in containers |
+| **systemd (user)** | **Linux** — start on login/boot, restart on crash |
+| **launchd** | **macOS** — LaunchAgent with `KeepAlive` (see `scripts/shroud-sidecar.launchd.plist.example`) |
+| **tmux / screen** | Either OS — quick manual persistence if you do not want a system service yet |
+| **Docker / compose** | Either OS — if you already run services in containers |
 
-**systemd (Linux), outline:**
+**Linux (systemd), outline:**
 
 1. In the `1claw-hermes` package: `pnpm install && pnpm build`.
 2. Copy `scripts/shroud-sidecar.service.example` to `~/.config/systemd/user/1claw-shroud-sidecar.service` and edit `WorkingDirectory`, `ExecStart` (`node` path), and `Environment=` / `ONECLAW_ENV_FILE` to match your machine.
@@ -169,7 +169,12 @@ Hermes does not supervise the sidecar. Pick one:
 
 The unit runs **`node dist/shroud/sidecar.js`** (same as `pnpm shroud`): it loads `.env`, may append `ONECLAW_AGENT_ID`, then spawns the `shroud-sidecar` binary.
 
-**macOS:** copy and edit `scripts/shroud-sidecar.launchd.plist.example` into `~/Library/LaunchAgents/`, then `launchctl load` / `launchctl start` (see comments in the plist).
+**macOS (launchd), outline:**
+
+1. Same: `pnpm install && pnpm build` in the `1claw-hermes` package.
+2. Copy `scripts/shroud-sidecar.launchd.plist.example` to `~/Library/LaunchAgents/com.1claw.shroud-sidecar.plist` and edit `WorkingDirectory`, absolute path to **`node`** (`which node`), and **`ONECLAW_ENV_FILE`** (see plist comments; create log files with `touch` if you use `StandardOutPath` / `StandardErrorPath`).
+3. `launchctl load ~/Library/LaunchAgents/com.1claw.shroud-sidecar.plist` then `launchctl start com.1claw.shroud-sidecar`
+4. Check: `curl -s http://127.0.0.1:8080/healthz`
 
 ### Which `.env` file?
 
