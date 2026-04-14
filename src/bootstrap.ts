@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { packageRootEnvPath } from "./dotenv-path.js";
 import { VaultError, ConfigError } from "./errors.js";
 
 export interface BootstrapOptions {
@@ -52,12 +53,12 @@ interface TokenExchangeResponse {
 }
 
 function defaultEnvPath(): string {
-  return path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    ".env",
-  );
+  return packageRootEnvPath();
 }
+
+/** Agent UUID from Vault token responses. */
+const AGENT_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Parse a minimal .env file (KEY=value, # comments, quoted values). */
 export function parseDotEnv(content: string): Record<string, string> {
@@ -78,6 +79,43 @@ export function parseDotEnv(content: string): Record<string, string> {
     out[key] = val;
   }
   return out;
+}
+
+/**
+ * If `.env` has an `ocv_` key but no `ONECLAW_AGENT_ID`, exchange once and append the id.
+ * Raw `shroud-sidecar` requires both; this avoids manual copy-paste after bootstrap.
+ */
+export async function ensureAgentIdInDotEnv(envPath: string): Promise<void> {
+  if (!fs.existsSync(envPath)) return;
+  const raw = await fs.promises.readFile(envPath, "utf-8");
+  const parsed = parseDotEnv(raw);
+  if (
+    parsed.ONECLAW_AGENT_ID &&
+    AGENT_UUID_RE.test(parsed.ONECLAW_AGENT_ID.trim())
+  ) {
+    return;
+  }
+  const apiKey = parsed.ONECLAW_AGENT_API_KEY?.trim() ?? "";
+  if (!apiKey.startsWith("ocv_")) return;
+  const apiBase = parsed.ONECLAW_API_BASE?.trim() || "https://api.1claw.xyz";
+
+  let tokenData: TokenExchangeResponse;
+  try {
+    tokenData = await exchangeToken(apiBase, apiKey);
+  } catch {
+    return;
+  }
+
+  const id = tokenData.agent_id?.trim();
+  if (!id || !AGENT_UUID_RE.test(id)) return;
+
+  const sep = raw.endsWith("\n") ? "" : "\n";
+  const addition =
+    `${sep}# Added by 1claw-hermes (required for shroud-sidecar manual mode)\nONECLAW_AGENT_ID=${id}\n`;
+  await atomicWrite(envPath, raw.trimEnd() + addition);
+  process.stderr.write(
+    `[1claw-hermes] Appended ONECLAW_AGENT_ID to ${envPath}\n`,
+  );
 }
 
 async function enrollAgent(
@@ -338,6 +376,7 @@ export async function completeBootstrapFromEnv(
     ONECLAW_AGENT_API_KEY: apiKey,
     ONECLAW_API_BASE: resolvedBase,
   };
+  if (agentId && agentId !== "unknown") envVars.ONECLAW_AGENT_ID = agentId;
   if (vaultId) envVars.ONECLAW_VAULT_ID = vaultId;
   if (shroudProvider !== "anthropic") envVars.SHROUD_PROVIDER = shroudProvider;
 
@@ -412,6 +451,7 @@ async function finishBootstrapWithKey(params: {
     ONECLAW_AGENT_API_KEY: apiKey,
     ONECLAW_API_BASE: apiBase,
   };
+  if (agentId && agentId !== "unknown") envVars.ONECLAW_AGENT_ID = agentId;
   if (vaultId) envVars.ONECLAW_VAULT_ID = vaultId;
   if (shroudProvider !== "anthropic") envVars.SHROUD_PROVIDER = shroudProvider;
 

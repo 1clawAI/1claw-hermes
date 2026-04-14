@@ -4,6 +4,7 @@ export {
   bootstrap,
   bootstrapEnroll,
   completeBootstrapFromEnv,
+  ensureAgentIdInDotEnv,
   parseDotEnv,
   isBootstrapComplete,
   type BootstrapOptions,
@@ -13,6 +14,7 @@ export {
   type EnrollOnlyOptions,
   type CompleteFromEnvOptions,
 } from "./bootstrap.js";
+export { resolveDotEnvPath, packageRootEnvPath } from "./dotenv-path.js";
 export {
   buildMcpEntry,
   patchHermesConfig,

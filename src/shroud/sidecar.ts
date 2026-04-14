@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { parseArgs } from "node:util";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parseDotEnv } from "../bootstrap.js";
+import { ensureAgentIdInDotEnv, parseDotEnv } from "../bootstrap.js";
+import { expandTilde, resolveDotEnvPath } from "../dotenv-path.js";
 
 const SIDECAR_BINARY = "shroud-sidecar";
 const DEFAULT_LISTEN = ":8080";
@@ -26,13 +28,11 @@ export interface SidecarOptions {
   shroudUrl?: string;
 }
 
-function defaultEnvPath(): string {
-  return path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    "..",
-    ".env",
-  );
+function resolveEnvFilePath(options: SidecarOptions): string {
+  if (options.envPath) {
+    return path.resolve(expandTilde(options.envPath));
+  }
+  return resolveDotEnvPath({});
 }
 
 function findBinary(): string | null {
@@ -101,7 +101,7 @@ export async function waitForHealth(
  * Returns the ChildProcess so callers can manage its lifecycle.
  */
 export function startSidecar(options: SidecarOptions = {}): ChildProcess {
-  const envPath = options.envPath ?? defaultEnvPath();
+  const envPath = resolveEnvFilePath(options);
   const creds = loadCredsFromEnv(envPath);
 
   const agentId = process.env.ONECLAW_AGENT_ID ?? creds.ONECLAW_AGENT_ID ?? "";
@@ -179,16 +179,42 @@ export async function startSidecarAndWait(
 
 /** CLI entry: start sidecar, keep running until SIGINT/SIGTERM. */
 async function main(): Promise<void> {
-  const envPath = defaultEnvPath();
-  const creds = loadCredsFromEnv(envPath);
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      "env-file": { type: "string" },
+      provider: { type: "string" },
+      help: { type: "boolean", short: "h" },
+    },
+    strict: true,
+  });
 
+  if (values.help) {
+    process.stderr.write(`Usage: pnpm shroud [--env-file <path>] [--provider <name>]
+
+Reads credentials from .env (see resolve order in README).
+Environment:
+  ONECLAW_ENV_FILE          Path to .env if not using --env-file
+  ONECLAW_DEFAULT_PROVIDER  Default upstream (google, openai, …)
+`);
+    process.exit(0);
+  }
+
+  const envPath = resolveDotEnvPath({ explicit: values["env-file"] });
+  await ensureAgentIdInDotEnv(envPath);
+
+  const creds = loadCredsFromEnv(envPath);
   const provider =
+    values.provider ??
     process.env.ONECLAW_DEFAULT_PROVIDER ??
     process.env.SHROUD_PROVIDER ??
     creds.SHROUD_PROVIDER ??
     undefined;
 
-  const child = await startSidecarAndWait({ provider, envPath });
+  const child = await startSidecarAndWait({
+    provider,
+    envPath,
+  });
 
   const shutdown = () => {
     child.kill("SIGTERM");

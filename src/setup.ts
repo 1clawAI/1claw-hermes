@@ -11,19 +11,15 @@
  *   pnpm setup --hermes-dir ~/.hermes    # custom Hermes config dir
  */
 import { parseArgs } from "node:util";
-import * as path from "node:path";
 import * as fs from "node:fs";
-import { completeBootstrapFromEnv, parseDotEnv } from "./bootstrap.js";
+import {
+  completeBootstrapFromEnv,
+  ensureAgentIdInDotEnv,
+  parseDotEnv,
+} from "./bootstrap.js";
+import { resolveDotEnvPath } from "./dotenv-path.js";
 import { patchHermesConfig, patchHermesModel } from "./mcp/hermes-config.js";
 import { startSidecarAndWait } from "./shroud/sidecar.js";
-
-function defaultEnvPath(): string {
-  return path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    ".env",
-  );
-}
 
 function log(msg: string): void {
   process.stderr.write(`[setup] ${msg}\n`);
@@ -51,7 +47,7 @@ Options:
   --provider <name>       Upstream LLM provider (default: google)
   --model <name>          Model name for Hermes (e.g. google/gemini-2.5-flash)
   --hermes-dir <path>     Hermes config directory (default: ~/.hermes)
-  --env-path <path>       Path to .env (default: package root .env)
+  --env-path <path>       Path to .env (else ONECLAW_ENV_FILE, else cwd walk, else package .env)
   --no-sidecar            Only patch configs; don't start the sidecar
   --sidecar-port <port>   Sidecar listen port (default: 8080)
   -h, --help              Show this help
@@ -67,7 +63,7 @@ What this does:
     process.exit(0);
   }
 
-  const envPath = values["env-path"] ?? defaultEnvPath();
+  const envPath = resolveDotEnvPath({ explicit: values["env-path"] });
   const hermesDir = values["hermes-dir"]!;
   const provider = values.provider!;
   const port = values["sidecar-port"]!;
@@ -97,6 +93,8 @@ What this does:
   } else {
     log(`Credentials OK (agent key: ${envVars.ONECLAW_AGENT_API_KEY.slice(0, 12)}…)`);
   }
+
+  await ensureAgentIdInDotEnv(envPath);
 
   // Reload env into process so config.ts picks it up
   const freshEnv = parseDotEnv(fs.readFileSync(envPath, "utf-8"));

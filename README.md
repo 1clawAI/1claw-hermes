@@ -69,6 +69,8 @@ All environment variables are validated at startup with Zod. The only variable s
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ONECLAW_AGENT_API_KEY` | Yes | — | `ocv_` prefixed agent API key |
+| `ONECLAW_AGENT_ID` | No | auto-written on `bootstrap complete` | Agent UUID — **required** by the raw `shroud-sidecar` binary; `pnpm shroud` can append it via token exchange if missing |
+| `ONECLAW_ENV_FILE` | No | — | Absolute path to `.env` when it is not next to this package (cloud / custom layout). Same as `pnpm shroud --env-file` / `pnpm setup --env-path` |
 | `ONECLAW_VAULT_ID` | No | auto-discovered | UUID of the vault to operate on |
 | `ONECLAW_API_BASE` | No | `https://api.1claw.xyz` | Vault API base URL |
 | `ONECLAW_MCP_URL` | No | `https://mcp.1claw.xyz/mcp` | MCP server endpoint |
@@ -137,6 +139,17 @@ This does **everything**:
 6. Keeps running (Ctrl+C to stop).
 
 Switch back to Hermes and run `/reload-mcp`. Done.
+
+### Which `.env` file?
+
+`pnpm setup` and `pnpm shroud` resolve credentials in this order:
+
+1. CLI flag: `--env-path` (setup) or `--env-file` (shroud)
+2. Environment variable: `ONECLAW_ENV_FILE=/absolute/path/.env`
+3. Walk **current working directory** upward until a file named `.env` is found (so you can `cd` into `~/hermes/hermes-agent/1claw-hermes` and run `pnpm shroud` with no extra flags)
+4. Fallback: `packages/1claw-hermes/.env` next to this package
+
+The Go binary **`shroud-sidecar` does not read `.env` files** — either run **`pnpm shroud`** (Node loads the file and passes env vars to the child), or `set -a; source /path/.env; set +a` before `./shroud-sidecar`. After `pnpm bootstrap complete`, `.env` includes **`ONECLAW_AGENT_ID`** when the API returns it; if you have an older file with only `ocv_`, run `pnpm shroud` once — it may **append** the agent id automatically.
 
 Options:
 
@@ -349,8 +362,9 @@ pnpm shroud                 # start sidecar only (from .env)
 src/
   config.ts          — Zod-validated env + runtime config, needsBootstrap() helper
   client.ts          — Singleton @1claw/sdk wrapper with auto token refresh
+  dotenv-path.ts     — resolveDotEnvPath (ONECLAW_ENV_FILE, cwd walk, package .env)
   errors.ts          — Typed error classes (ConfigError, VaultError, GuardrailViolationError)
-  bootstrap.ts       — enroll stub, complete-from-.env, full bootstrap; parseDotEnv
+  bootstrap.ts       — enroll stub, complete-from-.env, full bootstrap; parseDotEnv; ensureAgentIdInDotEnv
   bootstrap-cli.ts   — CLI: enroll | complete | default (TTY / non-TTY pending_key)
   setup.ts           — Unified CLI: bootstrap complete → patch MCP → patch model → start sidecar
   mcp/
