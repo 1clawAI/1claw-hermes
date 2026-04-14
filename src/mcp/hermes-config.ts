@@ -188,3 +188,94 @@ export async function patchHermesConfig(
 
   await patchYaml(yamlPath, entry);
 }
+
+// ---------------------------------------------------------------------------
+// Hermes model config patching (Shroud sidecar integration)
+// ---------------------------------------------------------------------------
+
+export interface PatchHermesModelOptions {
+  /** Sidecar listen address (default: `http://127.0.0.1:8080/v1`). */
+  sidecarBaseUrl?: string;
+  /** Model identifier Hermes should use (e.g. `google/gemini-2.5-flash`). */
+  model?: string;
+}
+
+/**
+ * Patch Hermes `config.yaml` so `model.provider = "custom"` and
+ * `model.base_url` points at the local Shroud sidecar.
+ *
+ * Only touches `model.provider` and `model.base_url` — all other model
+ * settings (name, temperature, etc.) are preserved.
+ */
+export async function patchHermesModel(
+  configDir: string,
+  options: PatchHermesModelOptions = {},
+): Promise<void> {
+  const resolved = resolveHermesDir(configDir);
+  await fs.promises.mkdir(resolved, { recursive: true });
+
+  const yamlPath = path.join(resolved, "config.yaml");
+
+  let doc: Record<string, unknown> = {};
+  if (fs.existsSync(yamlPath)) {
+    await backupFile(yamlPath);
+    const raw = await fs.promises.readFile(yamlPath, "utf-8");
+    const parsed = parseYaml(raw);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      doc = parsed as Record<string, unknown>;
+    }
+  }
+
+  const modelSection =
+    (doc.model as Record<string, unknown> | undefined) ?? {};
+
+  modelSection.provider = "custom";
+  modelSection.base_url =
+    options.sidecarBaseUrl ?? "http://127.0.0.1:8080/v1";
+
+  if (options.model) {
+    modelSection.name = options.model;
+  }
+
+  doc.model = modelSection;
+
+  const out = stringifyYaml(doc, { lineWidth: 100 });
+  await atomicWrite(yamlPath, out.endsWith("\n") ? out : `${out}\n`);
+}
+
+/**
+ * Revert `model.provider` and `model.base_url` to their previous values
+ * by removing the custom overrides. Hermes will fall back to its own defaults
+ * or the user's prior provider.
+ */
+export async function unpatchHermesModel(
+  configDir: string,
+): Promise<void> {
+  const resolved = resolveHermesDir(configDir);
+  const yamlPath = path.join(resolved, "config.yaml");
+
+  if (!fs.existsSync(yamlPath)) return;
+
+  await backupFile(yamlPath);
+  const raw = await fs.promises.readFile(yamlPath, "utf-8");
+  const parsed = parseYaml(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+
+  const doc = parsed as Record<string, unknown>;
+  const modelSection = doc.model as Record<string, unknown> | undefined;
+  if (!modelSection) return;
+
+  if (modelSection.provider === "custom") {
+    delete modelSection.provider;
+  }
+  if (
+    typeof modelSection.base_url === "string" &&
+    modelSection.base_url.includes("127.0.0.1")
+  ) {
+    delete modelSection.base_url;
+  }
+
+  doc.model = modelSection;
+  const out = stringifyYaml(doc, { lineWidth: 100 });
+  await atomicWrite(yamlPath, out.endsWith("\n") ? out : `${out}\n`);
+}

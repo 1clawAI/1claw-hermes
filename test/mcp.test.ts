@@ -34,7 +34,12 @@ vi.mock("../src/config.js", () => ({
   requireApiKey: () => "ocv_test_key_123",
 }));
 
-import { buildMcpEntry, patchHermesConfig } from "../src/mcp/index.js";
+import {
+  buildMcpEntry,
+  patchHermesConfig,
+  patchHermesModel,
+  unpatchHermesModel,
+} from "../src/mcp/index.js";
 
 describe("buildMcpEntry", () => {
   it("returns the correct shape with Authorization and X-Vault-ID headers", () => {
@@ -153,5 +158,110 @@ describe("patchHermesConfig", () => {
     const oneclaw = parsed.mcpServers.oneclaw;
     expect(oneclaw.command).toBe("npx");
     expect(oneclaw.env.ONECLAW_AGENT_API_KEY).toBe("ocv_test_key_123");
+  });
+});
+
+describe("patchHermesModel", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-model-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("sets model.provider=custom and model.base_url to sidecar", async () => {
+    await patchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, string>;
+    expect(model.provider).toBe("custom");
+    expect(model.base_url).toBe("http://127.0.0.1:8080/v1");
+  });
+
+  it("accepts custom sidecar base URL and model name", async () => {
+    await patchHermesModel(tmpDir, {
+      sidecarBaseUrl: "http://10.0.0.5:9090/v1",
+      model: "google/gemini-2.5-flash",
+    });
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, string>;
+    expect(model.provider).toBe("custom");
+    expect(model.base_url).toBe("http://10.0.0.5:9090/v1");
+    expect(model.name).toBe("google/gemini-2.5-flash");
+  });
+
+  it("preserves existing yaml keys", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      "theme: dark\nmodel:\n  temperature: 0.7\n  name: gpt-4o\n",
+    );
+
+    await patchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    expect(parsed.theme).toBe("dark");
+    const model = parsed.model as Record<string, unknown>;
+    expect(model.temperature).toBe(0.7);
+    expect(model.provider).toBe("custom");
+    expect(model.base_url).toBe("http://127.0.0.1:8080/v1");
+    expect(model.name).toBe("gpt-4o");
+  });
+
+  it("creates a backup before overwriting", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(configPath, "model:\n  provider: openai\n");
+
+    await patchHermesModel(tmpDir);
+
+    const backups = fs
+      .readdirSync(tmpDir)
+      .filter((f) => f.startsWith("config.yaml.bak."));
+    expect(backups.length).toBe(1);
+  });
+});
+
+describe("unpatchHermesModel", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-unpatch-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("removes custom provider and localhost base_url", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      'model:\n  provider: custom\n  base_url: "http://127.0.0.1:8080/v1"\n  name: gpt-4o\n',
+    );
+
+    await unpatchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    expect(model.provider).toBeUndefined();
+    expect(model.base_url).toBeUndefined();
+    expect(model.name).toBe("gpt-4o");
+  });
+
+  it("no-ops when no config.yaml exists", async () => {
+    await unpatchHermesModel(tmpDir);
+    expect(fs.readdirSync(tmpDir).length).toBe(0);
   });
 });

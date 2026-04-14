@@ -1,6 +1,6 @@
 # @workspace/1claw-hermes
 
-Integration package that wires [1Claw](https://1claw.xyz) secrets management into [Hermes Agent](https://hermes-agent.nousresearch.com) across four planes: MCP-based secret fetching, Shroud LLM proxy, per-subagent scoped identities, and Intents API transaction signing. Every LLM call routes through Shroud's TEE for automatic secret redaction, PII filtering, and injection scoring before reaching the upstream provider.
+Integration package that wires [1Claw](https://1claw.xyz) secrets management into [Hermes Agent](https://hermes-agent.nousresearch.com) across four planes: MCP-based secret fetching, optional Shroud LLM proxy, per-subagent scoped identities, and Intents API transaction signing. **Shroud does not turn on by itself:** you either run the [Shroud sidecar](#hermes-and-shroud-use-the-sidecar) in front of Hermes, or call Shroud from TypeScript via [`createShroudClient()`](#route-llm-calls-through-shroud-programmatically).
 
 This package is designed as a thin, typed layer over the `@1claw/sdk`. It provides opinionated defaults for Hermes workflows — ephemeral subagent identities with scoped policies, client-side guardrail validation before on-chain transactions, and atomic Hermes config patching — while staying composable enough to use in any agent framework that speaks the OpenAI chat completions API.
 
@@ -73,9 +73,9 @@ All environment variables are validated at startup with Zod. The only variable s
 | `ONECLAW_API_BASE` | No | `https://api.1claw.xyz` | Vault API base URL |
 | `ONECLAW_MCP_URL` | No | `https://mcp.1claw.xyz/mcp` | MCP server endpoint |
 | `ONECLAW_MCP_TOKEN` | No | — | Pre-exchanged JWT (auto-exchanged if blank) |
-| `SHROUD_URL` | No | `https://shroud.1claw.xyz/v1` | Shroud TEE proxy URL |
-| `SHROUD_TOKEN` | No | uses agent JWT | Bearer token for Shroud |
-| `SHROUD_PROVIDER` | No | `anthropic` | Upstream LLM provider |
+| `SHROUD_URL` | No | `https://shroud.1claw.xyz/v1` | Shroud TEE proxy URL (`createShroudClient` in Node) |
+| `SHROUD_TOKEN` | No | uses agent JWT | Bearer for Shroud (`createShroudClient`); not used by the sidecar binary |
+| `SHROUD_PROVIDER` | No | `anthropic` | Upstream for `createShroudClient` only — **Hermes + sidecar** uses `ONECLAW_DEFAULT_PROVIDER` on the **sidecar** process ([below](#hermes-and-shroud-use-the-sidecar)) |
 | `HERMES_CONFIG_DIR` | No | `~/.hermes` | Path to Hermes config directory |
 
 For test isolation, use `loadConfig()` with partial overrides:
@@ -117,9 +117,92 @@ Stdio mode stores your `ocv_` key in the YAML `env` block (same sensitivity as `
 
 See [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) and [Use MCP with Hermes](https://hermes-agent.nousresearch.com/docs/guides/use-mcp-with-hermes/).
 
-## Route LLM calls through Shroud
+## Hermes and Shroud: use the sidecar
 
-Get an OpenAI-compatible client pointed at the Shroud TEE proxy. Shroud intercepts every request — redacting secrets and PII, scoring for prompt injection — then forwards to the real provider.
+Hermes's **custom** OpenAI-compatible provider only sends a **base URL + API key**. Shroud expects extra headers (`X-Shroud-Provider`, agent auth). The supported pattern is to run the **[1claw Shroud sidecar](https://github.com/1clawAI/1claw-shroud-sidecar)** on your machine, point Hermes at `localhost`, and let the sidecar inject headers and forward to `https://shroud.1claw.xyz`.
+
+### One command (after bootstrap)
+
+```bash
+pnpm setup --provider google
+```
+
+This does **everything**:
+
+1. Reads `ONECLAW_AGENT_API_KEY` from `.env` (runs `bootstrap complete` if vault ID is missing).
+2. Patches `~/.hermes/config.yaml` → `mcp_servers.oneclaw` (stdio MCP with auto-refreshing JWT).
+3. Patches `~/.hermes/config.yaml` → `model.provider: custom`, `model.base_url: http://127.0.0.1:8080/v1`.
+4. Downloads + installs the sidecar binary (if not on PATH).
+5. Starts the sidecar → waits for `/healthz` → prints "ready".
+6. Keeps running (Ctrl+C to stop).
+
+Switch back to Hermes and run `/reload-mcp`. Done.
+
+Options:
+
+```bash
+pnpm setup --provider openai                                   # different upstream
+pnpm setup --provider google --model google/gemini-2.5-flash   # also set model name
+pnpm setup --no-sidecar                                        # patch configs only, start sidecar yourself
+pnpm setup --sidecar-port 9090                                 # non-default port
+pnpm setup -h                                                  # full help
+```
+
+### Step-by-step alternative
+
+If you want more control (or `pnpm setup` isn't right for your environment):
+
+**Start just the sidecar** (reads credentials from `.env`):
+
+```bash
+pnpm shroud                                    # install + start sidecar from .env
+ONECLAW_DEFAULT_PROVIDER=google pnpm shroud    # set provider explicitly
+```
+
+**Patch Hermes model config** (point at sidecar) separately from TS:
+
+```ts
+import { patchHermesModel } from "@workspace/1claw-hermes";
+await patchHermesModel("~/.hermes");
+// or with options:
+await patchHermesModel("~/.hermes", {
+  sidecarBaseUrl: "http://127.0.0.1:9090/v1",
+  model: "google/gemini-2.5-flash",
+});
+```
+
+**Undo model patching** (stop routing through sidecar):
+
+```ts
+import { unpatchHermesModel } from "@workspace/1claw-hermes";
+await unpatchHermesModel("~/.hermes");
+```
+
+**Programmatic sidecar** from your own Node process:
+
+```ts
+import { startSidecarAndWait } from "@workspace/1claw-hermes";
+const child = await startSidecarAndWait({ provider: "google" });
+// child is a ChildProcess; kill it when done
+```
+
+### What often goes wrong
+
+| Symptom | Cause |
+|--------|--------|
+| `APIConnectionError` / "Connection error" to `http://localhost:8080/v1` | Sidecar **not running**, wrong port, or Hermes and sidecar on **different hosts** (VM/Docker without port publish). Fix: run `pnpm shroud` in another terminal, or `pnpm setup` to do everything. |
+| Putting `SHROUD_PROVIDER` under `mcp_servers.oneclaw.env` | That block configures **only the MCP subprocess** (secrets/tools). It does **not** affect Hermes's **model** HTTP client. Set provider on the **sidecar process** (`ONECLAW_DEFAULT_PROVIDER`) or via `pnpm setup --provider`. |
+| MCP works, chat fails | Expected: two different processes — MCP has env from YAML; LLM uses `model.base_url` only. The sidecar must be running for LLM traffic. |
+
+### Docker / remote note
+
+If Hermes runs **inside** a container, `localhost:8080` is **inside that container**. Run the sidecar in the same network namespace, publish `8080:8080`, or point `base_url` at `host.docker.internal:8080` (or the host IP) as appropriate.
+
+---
+
+## Route LLM calls through Shroud (programmatically)
+
+From **TypeScript/Node** (not the Hermes binary), use `createShroudClient()` — it sets `X-Shroud-Provider` from `SHROUD_PROVIDER` and talks to `SHROUD_URL` (default `https://shroud.1claw.xyz/v1`). This path does **not** require the sidecar.
 
 ```ts
 import { createShroudClient } from "@workspace/1claw-hermes";
@@ -139,25 +222,40 @@ import { logShroudResponse } from "@workspace/1claw-hermes";
 logShroudResponse(response.headers);
 ```
 
-## Fetch secrets via MCP tools
+## Vault secrets (SDK REST, same semantics as MCP)
 
-Typed wrappers over the 1Claw MCP tools. Never store resolved values — use them inline.
+Typed wrappers call the **Vault HTTP API** via `@1claw/sdk` (with the same agent key / JWT refresh as the rest of this package). The MCP server exposes the same operations as tools named `get_secret`, **`put_secret`**, `list_secrets` — there is no separate "MCP protocol" for secrets; names differ only at the tool layer.
+
+- **`setSecret`** = **`putSecret`** = `PUT /v1/vaults/{vaultId}/secrets/{path}` (alias exported for parity with MCP naming).
+- Pass **`{ type: "api_key" }`** when you want the same behaviour as MCP auto-detection for API keys.
+
+Never persist resolved secret values in code — load them inline when needed.
 
 ```ts
-import { getSecret, setSecret, listSecrets } from "@workspace/1claw-hermes";
+import { getSecret, setSecret, putSecret, listSecrets } from "@workspace/1claw-hermes";
 
 const apiKey = await getSecret("api-keys/stripe");
-await setSecret("api-keys/new-service", "sk_live_...");
+await setSecret("api-keys/new-service", "sk_live_...", { type: "api_key" });
+await putSecret("passwords/other", "secret-value"); // same as setSecret
+
 const paths = await listSecrets("api-keys/");
 ```
 
-All functions accept an optional `AgentContext` for subagent-scoped calls:
+**Requirements:** `ONECLAW_VAULT_ID` and `ONECLAW_AGENT_API_KEY` must be set in the process environment (same as the MCP stdio server). If the REST call fails while MCP works, the process running this code often **does not have the same env** as the MCP subprocess — align `.env` / Hermes `mcp_servers.oneclaw.env` with the app using these helpers.
+
+`getSecret` / `listSecrets` accept an optional `AgentContext` for subagent-scoped calls:
 
 ```ts
 const value = await getSecret("config/db-url", {
   agentId: identity.agentId,
   token: identity.vaultToken,
 });
+```
+
+For **`setSecret`**, pass a subagent either as the third argument **alone** (legacy: `{ agentId, token }`) or inside options:
+
+```ts
+await setSecret("path", "value", { ctx: { agentId, token }, type: "api_key" });
 ```
 
 ## Provision a subagent
@@ -241,6 +339,8 @@ pnpm build        # compile to dist/
 pnpm bootstrap              # TTY: full flow; non-TTY: stub .env + pending_key
 pnpm bootstrap:enroll       # enroll + stub .env only
 pnpm bootstrap:complete     # read key from .env, merge vault id
+pnpm setup                  # patch Hermes + start sidecar (after bootstrap)
+pnpm shroud                 # start sidecar only (from .env)
 ```
 
 ## Architecture
@@ -252,12 +352,14 @@ src/
   errors.ts          — Typed error classes (ConfigError, VaultError, GuardrailViolationError)
   bootstrap.ts       — enroll stub, complete-from-.env, full bootstrap; parseDotEnv
   bootstrap-cli.ts   — CLI: enroll | complete | default (TTY / non-TTY pending_key)
+  setup.ts           — Unified CLI: bootstrap complete → patch MCP → patch model → start sidecar
   mcp/
     index.ts         — buildMcpEntry (JWT + vault)
-    hermes-config.ts — patchHermesConfig → config.yaml mcp_servers.oneclaw
-    tools.ts         — Typed wrappers for 1Claw MCP tools (getSecret, setSecret, listSecrets)
+    hermes-config.ts — patchHermesConfig, patchHermesModel, unpatchHermesModel → config.yaml
+    tools.ts         — REST-backed secret helpers (getSecret, setSecret/putSecret, listSecrets)
   shroud/
-    index.ts         — OpenAI-compatible Shroud proxy client factory
+    index.ts         — OpenAI-compatible Shroud proxy client factory (createShroudClient)
+    sidecar.ts       — Install, start, and health-check the shroud-sidecar Go binary
     middleware.ts     — Response header parser for redaction/injection logging
   subagents/
     index.ts         — Subagent identity lifecycle (provision, deprovision, registry)

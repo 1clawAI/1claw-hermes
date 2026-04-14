@@ -16,16 +16,34 @@ export {
 export {
   buildMcpEntry,
   patchHermesConfig,
+  patchHermesModel,
+  unpatchHermesModel,
   buildHermesMcpServerEntry,
   buildHermesStdioMcpEntry,
   HERMES_ONECLAW_SERVER_KEY,
   type HermesHttpMcpEntry,
   type PatchHermesOptions,
+  type PatchHermesModelOptions,
   type HermesMcpTransport,
 } from "./mcp/index.js";
-export { getSecret, setSecret, listSecrets } from "./mcp/tools.js";
-export type { AgentContext } from "./mcp/tools.js";
+export {
+  getSecret,
+  setSecret,
+  putSecret,
+  listSecrets,
+} from "./mcp/tools.js";
+export type {
+  AgentContext,
+  HermesSetSecretOptions,
+  SetSecretThirdArg,
+} from "./mcp/tools.js";
 export { createShroudClient } from "./shroud/index.js";
+export {
+  startSidecar,
+  startSidecarAndWait,
+  waitForHealth,
+  type SidecarOptions,
+} from "./shroud/sidecar.js";
 export { logShroudResponse } from "./shroud/middleware.js";
 export type { ShroudResponseInfo, LogFn } from "./shroud/middleware.js";
 export {
