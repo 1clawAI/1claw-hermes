@@ -13,7 +13,13 @@ export {
   type EnrollOnlyOptions,
   type CompleteFromEnvOptions,
 } from "./bootstrap.js";
-export { buildMcpEntry, patchHermesConfig } from "./mcp/index.js";
+export {
+  buildMcpEntry,
+  patchHermesConfig,
+  buildHermesMcpServerEntry,
+  HERMES_ONECLAW_SERVER_KEY,
+  type HermesHttpMcpEntry,
+} from "./mcp/index.js";
 export { getSecret, setSecret, listSecrets } from "./mcp/tools.js";
 export type { AgentContext } from "./mcp/tools.js";
 export { createShroudClient } from "./shroud/index.js";

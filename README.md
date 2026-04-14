@@ -87,15 +87,29 @@ const cfg = loadConfig({ ONECLAW_AGENT_API_KEY: "ocv_test" });
 
 ## Patch Hermes config
 
-Register the 1Claw MCP server so Hermes loads it on boot:
+Register the 1Claw MCP HTTP server under `mcp_servers.oneclaw` (tools show up as `mcp_oneclaw_*`):
 
 ```ts
 import { patchHermesConfig } from "@workspace/1claw-hermes";
 await patchHermesConfig("~/.hermes");
-// Restart Hermes — it will now load the 1Claw MCP server
 ```
 
-This reads the existing `config.json`, creates a timestamped backup, exchanges an agent token, merges the MCP server entry, and writes back atomically.
+This **exchanges your `ocv_` API key for a JWT** and writes:
+
+- **`~/.hermes/config.yaml`** if it exists or if there is no legacy `config.json` (Hermes’ native format).
+- **`~/.hermes/config.json`** only if YAML is missing and JSON already exists.
+
+Each entry includes `url`, `headers.Authorization: Bearer <JWT>`, **`X-Vault-ID`**, and Hermes-style `timeout` / `connect_timeout`. Do **not** put the raw `ocv_` key in `Authorization` — the MCP endpoint expects a **JWT**, not the API key.
+
+**Apply the change in Hermes** (no full restart required):
+
+```text
+/reload-mcp
+```
+
+Or exit the CLI and start `hermes` again. See [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) and [Use MCP with Hermes](https://hermes-agent.nousresearch.com/docs/guides/use-mcp-with-hermes/).
+
+**JWT expiry:** agent tokens are short-lived (~1 hour by default). If MCP starts returning 401, run `patchHermesConfig` again to refresh the JWT in config.
 
 ## Route LLM calls through Shroud
 
@@ -233,7 +247,8 @@ src/
   bootstrap.ts       — enroll stub, complete-from-.env, full bootstrap; parseDotEnv
   bootstrap-cli.ts   — CLI: enroll | complete | default (TTY / non-TTY pending_key)
   mcp/
-    index.ts         — MCP server config builder + Hermes config patcher
+    index.ts         — buildMcpEntry (JWT + vault)
+    hermes-config.ts — patchHermesConfig → config.yaml mcp_servers.oneclaw
     tools.ts         — Typed wrappers for 1Claw MCP tools (getSecret, setSecret, listSecrets)
   shroud/
     index.ts         — OpenAI-compatible Shroud proxy client factory

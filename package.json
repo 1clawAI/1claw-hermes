@@ -19,8 +19,9 @@
   },
   "dependencies": {
     "@1claw/sdk": "latest",
-    "zod": "^3.22.0",
-    "openai": "^4.0.0"
+    "openai": "^4.0.0",
+    "yaml": "^2.6.0",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
