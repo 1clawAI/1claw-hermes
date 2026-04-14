@@ -87,29 +87,35 @@ const cfg = loadConfig({ ONECLAW_AGENT_API_KEY: "ocv_test" });
 
 ## Patch Hermes config
 
-Register the 1Claw MCP HTTP server under `mcp_servers.oneclaw` (tools show up as `mcp_oneclaw_*`):
+Register 1Claw under `mcp_servers.oneclaw` (tools: `mcp_oneclaw_*`):
 
 ```ts
 import { patchHermesConfig } from "@workspace/1claw-hermes";
 await patchHermesConfig("~/.hermes");
 ```
 
-This **exchanges your `ocv_` API key for a JWT** and writes:
+**Default (`stdio`) — recommended:** writes a **stdio** server that runs `npx -y @1claw/mcp` with `ONECLAW_AGENT_API_KEY`, `ONECLAW_VAULT_ID`, and `ONECLAW_BASE_URL` in `env`. The official MCP package **refreshes JWTs inside the process** on every request, so you are **not** embedding expiring Bearer tokens in YAML. After `bootstrap`, one patch + `/reload-mcp` and you are done.
 
-- **`~/.hermes/config.yaml`** if it exists or if there is no legacy `config.json` (Hermes’ native format).
+**Optional HTTP (`transport: 'http'`):** talks to `https://mcp.1claw.xyz/mcp` with `Authorization: Bearer <JWT>` and `X-Vault-ID`. JWTs expire (often ~15–60 minutes); re-run `patchHermesConfig("~/.hermes", { transport: "http" })` when auth fails.
+
+```ts
+await patchHermesConfig("~/.hermes", { transport: "http" });
+```
+
+Files touched:
+
+- **`~/.hermes/config.yaml`** when it exists or when creating fresh config (Hermes native).
 - **`~/.hermes/config.json`** only if YAML is missing and JSON already exists.
 
-Each entry includes `url`, `headers.Authorization: Bearer <JWT>`, **`X-Vault-ID`**, and Hermes-style `timeout` / `connect_timeout`. Do **not** put the raw `ocv_` key in `Authorization` — the MCP endpoint expects a **JWT**, not the API key.
+Stdio mode stores your `ocv_` key in the YAML `env` block (same sensitivity as `.env` — keep `~/.hermes` permissions tight).
 
-**Apply the change in Hermes** (no full restart required):
+**Apply in Hermes** (no full restart required):
 
 ```text
 /reload-mcp
 ```
 
-Or exit the CLI and start `hermes` again. See [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) and [Use MCP with Hermes](https://hermes-agent.nousresearch.com/docs/guides/use-mcp-with-hermes/).
-
-**JWT expiry:** agent tokens are short-lived (~1 hour by default). If MCP starts returning 401, run `patchHermesConfig` again to refresh the JWT in config.
+See [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) and [Use MCP with Hermes](https://hermes-agent.nousresearch.com/docs/guides/use-mcp-with-hermes/).
 
 ## Route LLM calls through Shroud
 

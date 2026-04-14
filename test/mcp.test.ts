@@ -65,12 +65,33 @@ describe("patchHermesConfig", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("creates config.yaml with mcp_servers.oneclaw when no config exists", async () => {
+  it("defaults to stdio @1claw/mcp with env-based api key (no JWT in config)", async () => {
     await patchHermesConfig(tmpDir);
 
     const configPath = path.join(tmpDir, "config.yaml");
     expect(fs.existsSync(configPath)).toBe(true);
 
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const oneclaw = (parsed.mcp_servers as Record<string, unknown>).oneclaw as {
+      command: string;
+      args: string[];
+      env: Record<string, string>;
+    };
+    expect(oneclaw.command).toBe("npx");
+    expect(oneclaw.args).toEqual(["-y", "@1claw/mcp"]);
+    expect(oneclaw.env.ONECLAW_AGENT_API_KEY).toBe("ocv_test_key_123");
+    expect(oneclaw.env.ONECLAW_VAULT_ID).toBe(
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    expect(oneclaw.env.ONECLAW_BASE_URL).toBe("https://api.1claw.xyz");
+  });
+
+  it("http transport writes remote MCP URL with Bearer JWT", async () => {
+    await patchHermesConfig(tmpDir, { transport: "http" });
+
+    const configPath = path.join(tmpDir, "config.yaml");
     const parsed = parseYaml(
       fs.readFileSync(configPath, "utf-8"),
     ) as Record<string, unknown>;
@@ -116,7 +137,7 @@ describe("patchHermesConfig", () => {
       fs.readFileSync(configPath, "utf-8"),
     ) as Record<string, unknown>;
     expect(parsed.theme).toBe("dark");
-    const servers = parsed.mcp_servers as Record<string, { url: string }>;
+    const servers = parsed.mcp_servers as Record<string, { url?: string }>;
     expect(servers.other.url).toBe("http://other.test");
     expect(servers.oneclaw).toBeDefined();
   });
@@ -129,9 +150,8 @@ describe("patchHermesConfig", () => {
 
     const parsed = JSON.parse(fs.readFileSync(jsonPath, "utf-8"));
     expect(parsed.theme).toBe("light");
-    expect(parsed.mcpServers.oneclaw.url).toBe("https://mcp.1claw.xyz/mcp");
-    expect(parsed.mcpServers.oneclaw.headers.Authorization).toBe(
-      "Bearer jwt-token-abc",
-    );
+    const oneclaw = parsed.mcpServers.oneclaw;
+    expect(oneclaw.command).toBe("npx");
+    expect(oneclaw.env.ONECLAW_AGENT_API_KEY).toBe("ocv_test_key_123");
   });
 });

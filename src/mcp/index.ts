@@ -25,6 +25,9 @@ export function buildMcpEntry(
 export {
   patchHermesConfig,
   buildHermesMcpServerEntry,
+  buildHermesStdioMcpEntry,
   HERMES_ONECLAW_SERVER_KEY,
   type HermesHttpMcpEntry,
+  type PatchHermesOptions,
+  type HermesMcpTransport,
 } from "./hermes-config.js";

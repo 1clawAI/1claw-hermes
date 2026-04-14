@@ -17,8 +17,11 @@ export {
   buildMcpEntry,
   patchHermesConfig,
   buildHermesMcpServerEntry,
+  buildHermesStdioMcpEntry,
   HERMES_ONECLAW_SERVER_KEY,
   type HermesHttpMcpEntry,
+  type PatchHermesOptions,
+  type HermesMcpTransport,
 } from "./mcp/index.js";
 export { getSecret, setSecret, listSecrets } from "./mcp/tools.js";
 export type { AgentContext } from "./mcp/tools.js";

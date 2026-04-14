@@ -9,6 +9,18 @@ import { VaultError } from "../errors.js";
 /** Hermes `mcp_servers` key; tools appear as `mcp_oneclaw_*`. */
 export const HERMES_ONECLAW_SERVER_KEY = "oneclaw";
 
+/** Default: local stdio MCP — JWT refreshed inside the process (no expiring Bearer in YAML). */
+export type HermesMcpTransport = "stdio" | "http";
+
+export interface PatchHermesOptions {
+  /**
+   * `stdio` (default): `npx @1claw/mcp` with env-based `ocv_` auth; token exchange
+   * runs inside the MCP process on every tool call (no JWT expiry in config).
+   * `http`: remote `mcp.1claw.xyz` with Bearer JWT (short-lived; re-run patch when 401).
+   */
+  transport?: HermesMcpTransport;
+}
+
 export interface HermesHttpMcpEntry {
   url: string;
   headers: Record<string, string>;
@@ -29,6 +41,40 @@ export function buildHermesMcpServerEntry(
     timeout: 120,
     connect_timeout: 60,
   };
+}
+
+/** Stdio entry: same pattern as Cursor / Claude Desktop — stable credentials in env. */
+export function buildHermesStdioMcpEntry(): Record<string, unknown> {
+  return {
+    command: "npx",
+    args: ["-y", "@1claw/mcp"],
+    env: {
+      ONECLAW_BASE_URL: config.oneClawApiBase,
+      ONECLAW_AGENT_API_KEY: requireApiKey(),
+      ONECLAW_VAULT_ID: requireVaultId(),
+    },
+    timeout: 120,
+    connect_timeout: 60,
+  };
+}
+
+async function buildHttpEntryFromExchange(): Promise<HermesHttpMcpEntry> {
+  const client = getClient();
+  const tokenResponse = await client.auth.agentToken({
+    api_key: requireApiKey(),
+  });
+
+  if (tokenResponse.error || !tokenResponse.data) {
+    throw new VaultError(
+      "TOKEN_EXCHANGE_FAILED",
+      tokenResponse.error?.message ?? "Failed to exchange agent token",
+    );
+  }
+
+  return buildHermesMcpServerEntry(
+    tokenResponse.data.access_token,
+    requireVaultId(),
+  );
 }
 
 async function atomicWrite(filePath: string, content: string): Promise<void> {
@@ -53,7 +99,7 @@ function resolveHermesDir(configDir: string): string {
 
 async function patchYaml(
   yamlPath: string,
-  entry: HermesHttpMcpEntry,
+  entry: Record<string, unknown>,
 ): Promise<void> {
   let doc: Record<string, unknown> = {};
   if (fs.existsSync(yamlPath)) {
@@ -77,7 +123,7 @@ async function patchYaml(
 
 async function patchJson(
   jsonPath: string,
-  entry: HermesHttpMcpEntry,
+  entry: Record<string, unknown>,
 ): Promise<void> {
   let existing: Record<string, unknown> = {};
   try {
@@ -101,13 +147,21 @@ async function patchJson(
 }
 
 /**
- * Merge 1Claw MCP into Hermes config. Prefers `~/.hermes/config.yaml` (Hermes
- * native); falls back to `config.json` if only that exists.
+ * Merge 1Claw MCP into Hermes config. Prefers `~/.hermes/config.yaml`; falls back
+ * to `config.json` if only that exists.
  *
- * Uses a **JWT** from `POST /v1/auth/agent-token` in `Authorization` — not the
- * raw `ocv_` API key. The MCP server also requires `X-Vault-ID`.
+ * **Default (`transport: 'stdio'`)** runs the official `@1claw/mcp` package via
+ * `npx` with `ONECLAW_AGENT_API_KEY` in `env` — the MCP client refreshes JWTs
+ * automatically (no stale Bearer in YAML).
+ *
+ * **`transport: 'http'`** targets the hosted MCP URL with a short-lived JWT
+ * (re-run when it expires).
  */
-export async function patchHermesConfig(configDir: string): Promise<void> {
+export async function patchHermesConfig(
+  configDir: string,
+  options: PatchHermesOptions = {},
+): Promise<void> {
+  const transport = options.transport ?? "stdio";
   const resolved = resolveHermesDir(configDir);
 
   await fs.promises.mkdir(resolved, { recursive: true });
@@ -115,22 +169,10 @@ export async function patchHermesConfig(configDir: string): Promise<void> {
   const yamlPath = path.join(resolved, "config.yaml");
   const jsonPath = path.join(resolved, "config.json");
 
-  const client = getClient();
-  const tokenResponse = await client.auth.agentToken({
-    api_key: requireApiKey(),
-  });
-
-  if (tokenResponse.error || !tokenResponse.data) {
-    throw new VaultError(
-      "TOKEN_EXCHANGE_FAILED",
-      tokenResponse.error?.message ?? "Failed to exchange agent token",
-    );
-  }
-
-  const entry = buildHermesMcpServerEntry(
-    tokenResponse.data.access_token,
-    requireVaultId(),
-  );
+  const entry =
+    transport === "stdio"
+      ? buildHermesStdioMcpEntry()
+      : { ...(await buildHttpEntryFromExchange()) };
 
   if (fs.existsSync(yamlPath)) {
     await backupFile(yamlPath);
