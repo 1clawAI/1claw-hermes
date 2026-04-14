@@ -12,11 +12,36 @@ export interface BootstrapOptions {
   shroudProvider?: string;
 }
 
-export interface BootstrapResult {
+/** Finished bootstrap — key exchanged and .env written with discovered vault. */
+export interface BootstrapCompleteResult {
+  status: "complete";
   agentId: string;
   vaultId: string | undefined;
   apiKey: string;
   envPath: string;
+}
+
+/** Enrollment-only (e.g. non-TTY): stub .env written; user adds key locally, then runs `complete`. */
+export interface BootstrapPendingResult {
+  status: "pending_key";
+  agentId: string;
+  envPath: string;
+  message: string;
+}
+
+export type BootstrapResult = BootstrapCompleteResult | BootstrapPendingResult;
+
+export interface EnrollOnlyOptions {
+  email: string;
+  agentName: string;
+  apiBase?: string;
+  envPath?: string;
+}
+
+export interface CompleteFromEnvOptions {
+  envPath?: string;
+  apiBase?: string;
+  shroudProvider?: string;
 }
 
 interface TokenExchangeResponse {
@@ -24,6 +49,35 @@ interface TokenExchangeResponse {
   expires_in: number;
   agent_id?: string;
   vault_ids?: string[];
+}
+
+function defaultEnvPath(): string {
+  return path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    "..",
+    ".env",
+  );
+}
+
+/** Parse a minimal .env file (KEY=value, # comments, quoted values). */
+export function parseDotEnv(content: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    let val = trimmed.slice(eq + 1).trim();
+    if (
+      (val.startsWith('"') && val.endsWith('"')) ||
+      (val.startsWith("'") && val.endsWith("'"))
+    ) {
+      val = val.slice(1, -1);
+    }
+    out[key] = val;
+  }
+  return out;
 }
 
 async function enrollAgent(
@@ -124,34 +178,189 @@ function buildEnvContent(vars: Record<string, string>): string {
   return lines.join("\n");
 }
 
-export async function bootstrap(
-  options: BootstrapOptions,
-): Promise<BootstrapResult> {
+function buildStubEnvContent(params: {
+  email: string;
+  agentName: string;
+  agentId: string;
+  apiBase: string;
+}): string {
+  return [
+    "# 1claw-hermes — enrollment requested",
+    `# Agent name: ${params.agentName}`,
+    `# Pending agent id (from enrollment): ${params.agentId}`,
+    `# Human email: ${params.email}`,
+    "#",
+    "# After you approve the email, paste your ocv_ API key on the line below",
+    "# (use your editor — do not paste the key into chat). Then run:",
+    "#   pnpm bootstrap complete",
+    "#",
+    "ONECLAW_AGENT_API_KEY=",
+    `ONECLAW_API_BASE=${params.apiBase}`,
+    "",
+  ].join("\n");
+}
+
+async function atomicWrite(filePath: string, content: string): Promise<void> {
+  const tmpPath = `${filePath}.tmp`;
+  await fs.promises.writeFile(tmpPath, content, "utf-8");
+  await fs.promises.rename(tmpPath, filePath);
+}
+
+/**
+ * Phase 1 — request enrollment and write a stub .env with an empty
+ * ONECLAW_AGENT_API_KEY line. Safe for non-TTY / agent runners: the user
+ * fills the key in the file locally, then runs `completeBootstrapFromEnv`.
+ */
+export async function bootstrapEnroll(
+  options: EnrollOnlyOptions,
+): Promise<BootstrapPendingResult> {
   const apiBase = options.apiBase ?? "https://api.1claw.xyz";
-  const envPath = options.envPath ?? path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
-    "..",
-    ".env",
-  );
-  const shroudProvider = options.shroudProvider ?? "anthropic";
+  const envPath = options.envPath ?? defaultEnvPath();
 
   log(`Enrolling agent "${options.agentName}" for ${options.email}...`);
-
-  await enrollAgent(apiBase, options.email, options.agentName);
+  const enroll = await enrollAgent(apiBase, options.email, options.agentName);
   log(`Enrollment sent! Check ${options.email} for the approval email.`);
 
-  let apiKey = options.apiKey;
-  if (!apiKey) {
-    if (!process.stdin.isTTY) {
-      throw new ConfigError(
-        "No API key provided and stdin is not a TTY. " +
-        "Pass --api-key or run interactively.",
+  if (fs.existsSync(envPath)) {
+    const prev = await fs.promises.readFile(envPath, "utf-8");
+    const parsed = parseDotEnv(prev);
+    if (parsed.ONECLAW_AGENT_API_KEY?.startsWith("ocv_")) {
+      log(
+        `${envPath} already contains an API key. Run \`pnpm bootstrap complete\` to finish, or remove the key line to replace.`,
       );
+      return {
+        status: "pending_key",
+        agentId: enroll.agent_id,
+        envPath,
+        message:
+          "Existing API key found in .env — run `pnpm bootstrap complete` to verify and merge vault id.",
+      };
     }
-    log("");
-    log("After approving the enrollment, you'll receive an API key (ocv_...).");
-    apiKey = await promptLine("Paste your API key: ");
+    const backupPath = `${envPath}.bak.${Date.now()}`;
+    await fs.promises.copyFile(envPath, backupPath);
+    log(`Backed up existing file to ${backupPath}`);
   }
+
+  const stub = buildStubEnvContent({
+    email: options.email,
+    agentName: options.agentName,
+    agentId: enroll.agent_id,
+    apiBase,
+  });
+  await atomicWrite(envPath, stub);
+
+  const msg =
+    `Stub written to ${envPath}. Add your ocv_ key to ONECLAW_AGENT_API_KEY in that file, then run: pnpm bootstrap complete`;
+
+  log("");
+  log(msg);
+  log("");
+
+  return {
+    status: "pending_key",
+    agentId: enroll.agent_id,
+    envPath,
+    message: msg,
+  };
+}
+
+/**
+ * Phase 2 — read ONECLAW_AGENT_API_KEY from .env (never from stdin / chat),
+ * exchange, verify, and write the full merged .env with vault id.
+ */
+export async function completeBootstrapFromEnv(
+  options: CompleteFromEnvOptions = {},
+): Promise<BootstrapCompleteResult> {
+  const envPath = options.envPath ?? defaultEnvPath();
+  const shroudProvider = options.shroudProvider ?? "anthropic";
+
+  if (!fs.existsSync(envPath)) {
+    throw new ConfigError(
+      `No .env file at ${envPath}. Run \`pnpm bootstrap\` or \`pnpm bootstrap enroll\` first.`,
+    );
+  }
+
+  const raw = await fs.promises.readFile(envPath, "utf-8");
+  const parsed = parseDotEnv(raw);
+  const resolvedBase =
+    options.apiBase?.trim() ||
+    parsed.ONECLAW_API_BASE?.trim() ||
+    "https://api.1claw.xyz";
+  const apiKey = parsed.ONECLAW_AGENT_API_KEY?.trim() ?? "";
+
+  if (!apiKey.startsWith("ocv_")) {
+    throw new ConfigError(
+      `Set ONECLAW_AGENT_API_KEY in ${envPath} to your ocv_ key from the approval email, save the file, then run this command again.`,
+    );
+  }
+
+  log("Exchanging credentials from .env...");
+  const tokenData = await exchangeToken(resolvedBase, apiKey);
+
+  const agentId = tokenData.agent_id ?? "unknown";
+  const vaultId = tokenData.vault_ids?.[0];
+
+  log("Verifying connection...");
+  await verifyConnection(resolvedBase, tokenData.access_token);
+
+  log(`Connected! Agent (${agentId})`);
+  if (vaultId) {
+    log(`Vault: ${vaultId} (auto-discovered)`);
+  } else {
+    log(
+      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.xyz",
+    );
+  }
+
+  if (fs.existsSync(envPath)) {
+    if (process.stdin.isTTY) {
+      const overwrite = await promptLine(
+        `Overwrite ${envPath} with merged values? [Y/n] `,
+      );
+      if (overwrite.toLowerCase() === "n") {
+        log("Skipped writing .env — values verified.");
+        return {
+          status: "complete",
+          agentId,
+          vaultId,
+          apiKey,
+          envPath,
+        };
+      }
+    } else {
+      const backupPath = `${envPath}.bak.${Date.now()}`;
+      await fs.promises.copyFile(envPath, backupPath);
+      log(`Backed up existing .env to ${backupPath}`);
+    }
+  }
+
+  const envVars: Record<string, string> = {
+    ONECLAW_AGENT_API_KEY: apiKey,
+    ONECLAW_API_BASE: resolvedBase,
+  };
+  if (vaultId) envVars.ONECLAW_VAULT_ID = vaultId;
+  if (shroudProvider !== "anthropic") envVars.SHROUD_PROVIDER = shroudProvider;
+
+  await atomicWrite(envPath, buildEnvContent(envVars));
+  log(`Wrote ${envPath} — you're ready to go.`);
+
+  return {
+    status: "complete",
+    agentId,
+    vaultId,
+    apiKey,
+    envPath,
+  };
+}
+
+async function finishBootstrapWithKey(params: {
+  apiKey: string;
+  apiBase: string;
+  envPath: string;
+  shroudProvider: string;
+  agentName: string;
+}): Promise<BootstrapCompleteResult> {
+  const { apiKey, apiBase, envPath, shroudProvider, agentName } = params;
 
   if (!apiKey.startsWith("ocv_")) {
     throw new ConfigError(
@@ -168,11 +377,13 @@ export async function bootstrap(
   log("Verifying connection...");
   await verifyConnection(apiBase, tokenData.access_token);
 
-  log(`Connected! Agent: ${options.agentName} (${agentId})`);
+  log(`Connected! Agent: ${agentName} (${agentId})`);
   if (vaultId) {
     log(`Vault: ${vaultId} (auto-discovered)`);
   } else {
-    log("No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.xyz");
+    log(
+      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.xyz",
+    );
   }
 
   if (fs.existsSync(envPath)) {
@@ -182,7 +393,13 @@ export async function bootstrap(
       );
       if (overwrite.toLowerCase() !== "y") {
         log("Skipped writing .env — configure manually.");
-        return { agentId, vaultId, apiKey, envPath };
+        return {
+          status: "complete",
+          agentId,
+          vaultId,
+          apiKey,
+          envPath,
+        };
       }
     } else {
       const backupPath = `${envPath}.bak.${Date.now()}`;
@@ -198,11 +415,62 @@ export async function bootstrap(
   if (vaultId) envVars.ONECLAW_VAULT_ID = vaultId;
   if (shroudProvider !== "anthropic") envVars.SHROUD_PROVIDER = shroudProvider;
 
-  const content = buildEnvContent(envVars);
-  const tmpPath = `${envPath}.tmp`;
-  await fs.promises.writeFile(tmpPath, content, "utf-8");
-  await fs.promises.rename(tmpPath, envPath);
+  await atomicWrite(envPath, buildEnvContent(envVars));
   log(`Wrote ${envPath} — you're ready to go.`);
 
-  return { agentId, vaultId, apiKey, envPath };
+  return {
+    status: "complete",
+    agentId,
+    vaultId,
+    apiKey,
+    envPath,
+  };
+}
+
+/**
+ * Full bootstrap: enrolls, then obtains the key via --api-key, TTY prompt,
+ * or (non-TTY) writes a stub .env and returns `pending_key` for file-based completion.
+ */
+export async function bootstrap(
+  options: BootstrapOptions,
+): Promise<BootstrapResult> {
+  const apiBase = options.apiBase ?? "https://api.1claw.xyz";
+  const envPath = options.envPath ?? defaultEnvPath();
+  const shroudProvider = options.shroudProvider ?? "anthropic";
+
+  if (!options.apiKey && !process.stdin.isTTY) {
+    return bootstrapEnroll({
+      email: options.email,
+      agentName: options.agentName,
+      apiBase,
+      envPath,
+    });
+  }
+
+  log(`Enrolling agent "${options.agentName}" for ${options.email}...`);
+  await enrollAgent(apiBase, options.email, options.agentName);
+  log(`Enrollment sent! Check ${options.email} for the approval email.`);
+
+  let apiKey = options.apiKey;
+  if (!apiKey) {
+    log("");
+    log("After approving the enrollment, you'll receive an API key (ocv_...).");
+    apiKey = await promptLine("Paste your API key: ");
+  }
+
+  const complete = await finishBootstrapWithKey({
+    apiKey: apiKey!,
+    apiBase,
+    envPath,
+    shroudProvider,
+    agentName: options.agentName,
+  });
+
+  return complete;
+}
+
+export function isBootstrapComplete(
+  r: BootstrapResult,
+): r is BootstrapCompleteResult {
+  return r.status === "complete";
 }

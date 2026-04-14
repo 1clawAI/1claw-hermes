@@ -1,6 +1,18 @@
 export { loadConfig, needsBootstrap, requireVaultId, requireApiKey, type Config } from "./config.js";
 export { getClient } from "./client.js";
-export { bootstrap, type BootstrapOptions, type BootstrapResult } from "./bootstrap.js";
+export {
+  bootstrap,
+  bootstrapEnroll,
+  completeBootstrapFromEnv,
+  parseDotEnv,
+  isBootstrapComplete,
+  type BootstrapOptions,
+  type BootstrapResult,
+  type BootstrapCompleteResult,
+  type BootstrapPendingResult,
+  type EnrollOnlyOptions,
+  type CompleteFromEnvOptions,
+} from "./bootstrap.js";
 export { buildMcpEntry, patchHermesConfig } from "./mcp/index.js";
 export { getSecret, setSecret, listSecrets } from "./mcp/tools.js";
 export type { AgentContext } from "./mcp/tools.js";

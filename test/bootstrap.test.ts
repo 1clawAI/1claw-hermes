@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { needsBootstrap } from "../src/config.js";
 import type { Config } from "../src/config.js";
+import { ConfigError } from "../src/errors.js";
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
@@ -32,6 +33,19 @@ describe("needsBootstrap", () => {
     } as Config;
 
     expect(needsBootstrap(cfg)).toBe(false);
+  });
+});
+
+describe("parseDotEnv", () => {
+  it("parses keys and quoted values", async () => {
+    const { parseDotEnv } = await import("../src/bootstrap.js");
+    const parsed = parseDotEnv(`
+# comment
+ONECLAW_AGENT_API_KEY=ocv_abc
+ONECLAW_API_BASE="https://api.example.com"
+`);
+    expect(parsed.ONECLAW_AGENT_API_KEY).toBe("ocv_abc");
+    expect(parsed.ONECLAW_API_BASE).toBe("https://api.example.com");
   });
 });
 
@@ -94,6 +108,8 @@ describe("bootstrap", () => {
       envPath,
     });
 
+    expect(result.status).toBe("complete");
+    if (result.status !== "complete") throw new Error("expected complete");
     expect(result.agentId).toBe("agent-abc-123");
     expect(result.vaultId).toBe("vault-def-456");
     expect(result.apiKey).toBe("ocv_test_key_headless");
@@ -138,6 +154,8 @@ describe("bootstrap", () => {
       envPath,
     });
 
+    expect(result.status).toBe("complete");
+    if (result.status !== "complete") throw new Error("expected complete");
     expect(result.vaultId).toBe("vault-def-456");
   });
 
@@ -168,6 +186,32 @@ describe("bootstrap", () => {
     }
   });
 
+  it("non-TTY without api-key writes stub and returns pending_key", async () => {
+    setupMocks();
+    const envPath = path.join(tmpDir, ".env");
+
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+
+    try {
+      const { bootstrap } = await import("../src/bootstrap.js");
+      const result = await bootstrap({
+        email: "agent@test.com",
+        agentName: "stub-agent",
+        envPath,
+      });
+
+      expect(result.status).toBe("pending_key");
+      if (result.status !== "pending_key") throw new Error("expected pending");
+      expect(result.agentId).toBe("agent-abc-123");
+      const content = fs.readFileSync(envPath, "utf-8");
+      expect(content).toContain("ONECLAW_AGENT_API_KEY=");
+      expect(content).toContain("pnpm bootstrap complete");
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+    }
+  });
+
   it("handles enrollment failure gracefully", async () => {
     mockFetch.mockResolvedValue(
       new Response(
@@ -185,5 +229,75 @@ describe("bootstrap", () => {
         envPath: path.join(tmpDir, ".env"),
       }),
     ).rejects.toThrow("Rate limited");
+  });
+});
+
+describe("completeBootstrapFromEnv", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hermes-complete-"));
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function setupMocks() {
+    mockFetch.mockImplementation(async (url: string) => {
+      const urlStr = typeof url === "string" ? url : String(url);
+      if (urlStr.includes("/v1/auth/agent-token")) {
+        return new Response(
+          JSON.stringify({
+            access_token: "jwt-abc",
+            expires_in: 3600,
+            agent_id: "ag-1",
+            vault_ids: ["vault-99"],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (urlStr.includes("/v1/agents/me")) {
+        return new Response(JSON.stringify({ id: "ag-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    });
+  }
+
+  it("reads key from .env and writes merged file", async () => {
+    setupMocks();
+    const envPath = path.join(tmpDir, ".env");
+    fs.writeFileSync(
+      envPath,
+      "ONECLAW_AGENT_API_KEY=ocv_from_file\nONECLAW_API_BASE=https://api.1claw.xyz\n",
+    );
+
+    const originalIsTTY = process.stdin.isTTY;
+    Object.defineProperty(process.stdin, "isTTY", { value: false, configurable: true });
+
+    try {
+      const { completeBootstrapFromEnv } = await import("../src/bootstrap.js");
+      const result = await completeBootstrapFromEnv({ envPath });
+
+      expect(result.status).toBe("complete");
+      expect(result.vaultId).toBe("vault-99");
+      const content = fs.readFileSync(envPath, "utf-8");
+      expect(content).toContain("ONECLAW_VAULT_ID=vault-99");
+      expect(content).toContain("ocv_from_file");
+    } finally {
+      Object.defineProperty(process.stdin, "isTTY", { value: originalIsTTY, configurable: true });
+    }
+  });
+
+  it("throws when key line is empty", async () => {
+    const envPath = path.join(tmpDir, ".env");
+    fs.writeFileSync(envPath, "ONECLAW_AGENT_API_KEY=\n");
+
+    const { completeBootstrapFromEnv } = await import("../src/bootstrap.js");
+    await expect(completeBootstrapFromEnv({ envPath })).rejects.toThrow(ConfigError);
   });
 });

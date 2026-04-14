@@ -6,34 +6,48 @@ This package is designed as a thin, typed layer over the `@1claw/sdk`. It provid
 
 ## Quick Start (Bootstrap)
 
-The fastest way to get running — just provide your email and an agent name:
+**Recommended (Hermes, CI shells, non-TTY):** keep the API key out of chat and off the command line. Enroll once, paste the key only into `.env` on disk, then complete:
 
 ```bash
 cd packages/1claw-hermes
 pnpm install
+pnpm bootstrap enroll --email alice@acme.com --name my-hermes-agent
+# Approve the email, then edit .env and set:
+#   ONECLAW_AGENT_API_KEY=ocv_...
+pnpm bootstrap complete
+```
+
+`complete` reads `ONECLAW_AGENT_API_KEY` from the file — it never prompts for the secret.
+
+Aliases: `pnpm bootstrap:enroll` and `pnpm bootstrap:complete`.
+
+**Interactive terminal (TTY):** one-shot flow with a paste prompt after enrollment:
+
+```bash
 pnpm bootstrap --email alice@acme.com --name my-hermes-agent
 ```
 
-This will:
-1. Self-enroll an agent via the 1Claw API (no account setup needed)
-2. Send an approval email to the address you provided
-3. Prompt you to paste the `ocv_` API key from the approval email
-4. Auto-discover your agent ID and vault from the API key
-5. Write a `.env` file with everything configured
+**Same behavior as `enroll` + `complete` in non-TTY:** running `pnpm bootstrap --email … --name …` without a TTY (e.g. Hermes running a shell command) writes a stub `.env` with an empty `ONECLAW_AGENT_API_KEY=` line and prints instructions. JSON stdout includes `"status":"pending_key"`. After you fill the key in the file, run `pnpm bootstrap complete`.
 
-For CI or pre-approved agents, pass the key directly:
+**CI only (key already in a secret store):** avoid logging this; prefer injecting into `.env` and using `pnpm bootstrap complete`.
 
 ```bash
 pnpm bootstrap --email alice@acme.com --name my-agent --api-key ocv_abc123
 ```
 
-Or bootstrap programmatically at runtime:
+Programmatic two-phase:
 
 ```ts
-import { needsBootstrap, bootstrap } from "@workspace/1claw-hermes";
+import {
+  needsBootstrap,
+  bootstrapEnroll,
+  completeBootstrapFromEnv,
+} from "@workspace/1claw-hermes";
 
 if (needsBootstrap()) {
-  await bootstrap({ email: "alice@acme.com", agentName: "my-hermes-agent" });
+  await bootstrapEnroll({ email: "alice@acme.com", agentName: "my-hermes-agent" });
+  // user adds ONECLAW_AGENT_API_KEY to .env
+  await completeBootstrapFromEnv();
 }
 ```
 
@@ -204,7 +218,9 @@ pnpm dev          # watch mode
 pnpm test         # run all tests
 pnpm test:watch   # watch mode
 pnpm build        # compile to dist/
-pnpm bootstrap    # interactive setup wizard
+pnpm bootstrap              # TTY: full flow; non-TTY: stub .env + pending_key
+pnpm bootstrap:enroll       # enroll + stub .env only
+pnpm bootstrap:complete     # read key from .env, merge vault id
 ```
 
 ## Architecture
@@ -214,8 +230,8 @@ src/
   config.ts          — Zod-validated env + runtime config, needsBootstrap() helper
   client.ts          — Singleton @1claw/sdk wrapper with auto token refresh
   errors.ts          — Typed error classes (ConfigError, VaultError, GuardrailViolationError)
-  bootstrap.ts       — Core enrollment + auto-discovery + .env writing engine
-  bootstrap-cli.ts   — CLI entry point (interactive / headless / fully headless)
+  bootstrap.ts       — enroll stub, complete-from-.env, full bootstrap; parseDotEnv
+  bootstrap-cli.ts   — CLI: enroll | complete | default (TTY / non-TTY pending_key)
   mcp/
     index.ts         — MCP server config builder + Hermes config patcher
     tools.ts         — Typed wrappers for 1Claw MCP tools (getSecret, setSecret, listSecrets)

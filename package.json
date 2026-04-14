@@ -12,6 +12,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "bootstrap": "tsx src/bootstrap-cli.ts",
+    "bootstrap:enroll": "tsx src/bootstrap-cli.ts enroll",
+    "bootstrap:complete": "tsx src/bootstrap-cli.ts complete",
     "test": "vitest run",
     "test:watch": "vitest"
   },
