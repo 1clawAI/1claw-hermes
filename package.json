@@ -21,7 +21,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@1claw/sdk": "latest",
+    "@1claw/sdk": "^0.20.4",
     "openai": "^4.0.0",
     "yaml": "^2.6.0",
     "zod": "^3.22.0"
