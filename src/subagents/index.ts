@@ -62,6 +62,10 @@ export async function provisionSubagent(
   const vaultId = requireVaultId();
   const client = getClient();
 
+  const hasSigningConfig = policy.signingChains.length > 0 ||
+    policy.messageSigningEnabled ||
+    policy.eip712DomainAllowlist.length > 0;
+
   const createRes = await client.agents.create({
     name: `hermes-sub-${name}`,
     description: `Hermes subagent: ${name}`,
@@ -88,6 +92,19 @@ export async function provisionSubagent(
       "SUBAGENT_CREATE_FAILED",
       "Agent created but no API key returned",
     );
+  }
+
+  if (hasSigningConfig) {
+    await client.agents.update(agent.id, {
+      signing_chains: policy.signingChains.length > 0 ? policy.signingChains : undefined,
+      message_signing_enabled: policy.messageSigningEnabled || undefined,
+      eip712_domain_allowlist: policy.eip712DomainAllowlist.length > 0 ? policy.eip712DomainAllowlist : undefined,
+      eip712_default_policy: policy.eip712DomainAllowlist.length > 0 ? policy.eip712DefaultPolicy : undefined,
+    }).catch(() => {});
+
+    for (const chain of policy.signingChains) {
+      await client.signingKeys.create(agent.id, { chain }).catch(() => {});
+    }
   }
 
   for (const secretPath of policy.secretPaths) {
