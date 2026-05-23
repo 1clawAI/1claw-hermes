@@ -10,26 +10,28 @@
     "1claw-hermes-setup": "./dist/setup.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"const fs=require('fs'),p=require('path');const dst='dist/talents/cmo';fs.mkdirSync(dst,{recursive:true});for(const f of ['persona.md','style-notes.md','products.md','campaign.md']){fs.copyFileSync(p.join('src/talents/cmo',f),p.join(dst,f));}\"",
     "dev": "tsc --watch",
     "bootstrap": "tsx src/bootstrap-cli.ts",
     "bootstrap:enroll": "tsx src/bootstrap-cli.ts enroll",
     "bootstrap:complete": "tsx src/bootstrap-cli.ts complete",
     "setup": "tsx src/setup.ts",
     "shroud": "tsx src/shroud/sidecar.ts",
+    "cmo": "tsx src/talents/cmo/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@1claw/sdk": "^0.24.0",
     "openai": "^4.0.0",
+    "twitter-api-v2": "^1.29.0",
     "yaml": "^2.6.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "vitest": "^1.4.0",
+    "@types/node": "^20.0.0",
     "tsx": "^4.0.0",
-    "@types/node": "^20.0.0"
+    "typescript": "^5.4.0",
+    "vitest": "^1.4.0"
   }
 }
