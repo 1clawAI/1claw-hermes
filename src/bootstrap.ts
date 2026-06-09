@@ -240,8 +240,9 @@ function buildStubEnvContent(params: {
 
 async function atomicWrite(filePath: string, content: string): Promise<void> {
   const tmpPath = `${filePath}.tmp`;
-  await fs.promises.writeFile(tmpPath, content, "utf-8");
+  await fs.promises.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
   await fs.promises.rename(tmpPath, filePath);
+  await fs.promises.chmod(filePath, 0o600);
 }
 
 /**

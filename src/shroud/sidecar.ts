@@ -53,9 +53,14 @@ function installSidecar(): string {
   const localPath = localBin();
   if (fs.existsSync(localPath)) return localPath;
 
-  console.error(`[1claw-hermes] ${SIDECAR_BINARY} not found — installing via install.sh ...`);
+  console.error(`[1claw-hermes] ${SIDECAR_BINARY} not found — downloading install script ...`);
+  const tmpScript = path.join(os.tmpdir(), `shroud-sidecar-install-${Date.now()}.sh`);
   try {
-    execSync(`curl -fsSL ${INSTALL_SCRIPT} | sh`, {
+    execSync(`curl -fsSL -o ${tmpScript} ${INSTALL_SCRIPT}`, {
+      stdio: "inherit",
+    });
+    fs.chmodSync(tmpScript, 0o700);
+    execSync(`sh ${tmpScript}`, {
       stdio: "inherit",
       env: { ...process.env, PREFIX: path.dirname(localPath) },
     });
@@ -63,6 +68,8 @@ function installSidecar(): string {
     throw new Error(
       `Failed to install ${SIDECAR_BINARY}. Install manually: curl -fsSL ${INSTALL_SCRIPT} | sh`,
     );
+  } finally {
+    try { fs.unlinkSync(tmpScript); } catch { /* best-effort cleanup */ }
   }
 
   if (!fs.existsSync(localPath)) {
