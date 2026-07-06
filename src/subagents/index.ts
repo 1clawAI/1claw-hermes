@@ -74,7 +74,7 @@ export async function provisionSubagent(
     vault_ids: [vaultId],
     intents_api_enabled: policy.allowedChains.length > 0,
     tx_allowed_chains: policy.allowedChains.length > 0 ? policy.allowedChains : undefined,
-    tx_max_value_eth: policy.maxValueEth ?? undefined,
+    tx_max_value: policy.maxValueEth ?? undefined,
     tx_to_allowlist: policy.allowedAddresses.length > 0 ? policy.allowedAddresses : undefined,
   });
 
