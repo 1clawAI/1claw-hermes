@@ -378,6 +378,65 @@ for await (const event of streamEvents(new Date("2026-01-01"))) {
 }
 ```
 
+## New in v0.42: Automations, Memory, Runtimes & Discovery
+
+### Automations
+
+Schedule recurring tasks for Hermes subagents — cron-based secret rotation, periodic API checks, or scheduled chain interactions:
+
+```ts
+import { createAutomation, listAutomations } from "@workspace/1claw-hermes";
+
+await createAutomation({
+  name: "rotate-stripe-key",
+  schedule: "0 0 * * 0", // weekly
+  action: { type: "secret_rotate", path: "api-keys/stripe" },
+});
+
+const autos = await listAutomations();
+```
+
+### Agent Memory
+
+Persistent vector memory for Hermes agents — store observations, user preferences, and inter-session context:
+
+```ts
+import { storeMemory, searchMemory } from "@workspace/1claw-hermes";
+
+await storeMemory("User prefers concise answers with code examples");
+const results = await searchMemory("communication preferences");
+```
+
+### Runtimes
+
+Deploy and manage Hermes agent runtimes — containerized execution with secret injection:
+
+```ts
+import { deployRuntime, listRuntimes } from "@workspace/1claw-hermes";
+
+const runtime = await deployRuntime({
+  image: "my-hermes-agent:latest",
+  env: { HERMES_CONFIG_DIR: "/etc/hermes" },
+});
+
+const runtimes = await listRuntimes();
+```
+
+### Agent Discovery
+
+Publish Hermes agents to the 1Claw directory:
+
+```ts
+import { publishToDirectory } from "@workspace/1claw-hermes";
+
+await publishToDirectory({
+  description: "Hermes CMO agent for social media campaigns",
+  tags: ["marketing", "social", "hermes"],
+});
+```
+
+---
+
 ## Development
 
 ```bash
