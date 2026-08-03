@@ -378,22 +378,28 @@ for await (const event of streamEvents(new Date("2026-01-01"))) {
 }
 ```
 
-## New in v0.42: Automations, Memory, Runtimes & Discovery
+## New in v0.43: Automations, Memory, Runtimes & Discovery
 
 ### Automations
 
-Schedule recurring tasks for Hermes subagents — cron-based secret rotation, periodic API checks, or scheduled chain interactions:
+Schedule recurring tasks for Hermes agents via the 1Claw SDK (`workflow_spec` + cron). Create with a human API key; bind the Hermes agent id:
 
 ```ts
-import { createAutomation, listAutomations } from "@workspace/1claw-hermes";
+import { OneclawClient } from "@1claw/sdk";
 
-await createAutomation({
+const client = new OneclawClient({ apiKey: process.env.ONECLAW_API_KEY! });
+
+await client.automations.create({
   name: "rotate-stripe-key",
-  schedule: "0 0 * * 0", // weekly
-  action: { type: "secret_rotate", path: "api-keys/stripe" },
+  agent_id: process.env.ONECLAW_AGENT_ID!,
+  trigger_type: "cron",
+  cron_expr: "0 0 * * 0", // weekly
+  workflow_spec: {
+    steps: [{ type: "secret_rotate", path: "api-keys/stripe" }],
+  },
 });
 
-const autos = await listAutomations();
+const { data } = await client.automations.list();
 ```
 
 ### Agent Memory
