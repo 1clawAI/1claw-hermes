@@ -7,7 +7,8 @@
   "types": "./dist/index.d.ts",
   "bin": {
     "1claw-hermes-bootstrap": "./dist/bootstrap-cli.js",
-    "1claw-hermes-setup": "./dist/setup.js"
+    "1claw-hermes-setup": "./dist/setup.js",
+    "1claw-hermes-runtime-start": "./dist/runtime-start.js"
   },
   "scripts": {
     "build": "tsc && node -e \"const fs=require('fs'),p=require('path');const dst='dist/talents/cmo';fs.mkdirSync(dst,{recursive:true});for(const f of ['persona.md','style-notes.md','products.md','campaign.md']){fs.copyFileSync(p.join('src/talents/cmo',f),p.join(dst,f));}\"",
@@ -22,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@1claw/sdk": "^0.43.1",
+    "@1claw/sdk": "^0.43.3",
     "openai": "^4.0.0",
     "twitter-api-v2": "^1.29.0",
     "yaml": "^2.6.0",

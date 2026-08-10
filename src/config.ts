@@ -3,8 +3,11 @@ import { ConfigError } from "./errors.js";
 
 const schema = z.object({
   oneClawApiBase: z.string().url().default("https://api.1claw.xyz"),
+  oneClawAgentId: z.string().uuid().optional(),
   oneClawVaultId: z.string().uuid().optional(),
   oneClawAgentApiKey: z.string().startsWith("ocv_").optional(),
+  /** Runtime containers inject a short-lived JWT instead of an ocv_ key. */
+  oneClawAgentToken: z.string().optional(),
   oneClawMcpUrl: z.string().url().default("https://mcp.1claw.xyz/mcp"),
   oneClawMcpToken: z.string().optional(),
   shroudUrl: z.string().url().default("https://shroud.1claw.xyz/v1"),
@@ -21,15 +24,23 @@ export function loadConfig(
   overrides: Partial<Record<string, string>> = {},
 ): Config {
   const raw = { ...process.env, ...overrides };
+  const agentToken =
+    raw.ONECLAW_AGENT_TOKEN ||
+    raw.ONECLAW_TOKEN ||
+    undefined;
+
   const result = schema.safeParse({
-    oneClawApiBase: raw.ONECLAW_API_BASE,
+    oneClawApiBase: raw.ONECLAW_API_BASE ?? raw.ONECLAW_BASE_URL,
+    oneClawAgentId: raw.ONECLAW_AGENT_ID,
     oneClawVaultId: raw.ONECLAW_VAULT_ID,
     oneClawAgentApiKey: raw.ONECLAW_AGENT_API_KEY,
+    oneClawAgentToken:
+      agentToken && agentToken.startsWith("eyJ") ? agentToken : undefined,
     oneClawMcpUrl: raw.ONECLAW_MCP_URL,
     oneClawMcpToken: raw.ONECLAW_MCP_TOKEN,
-    shroudUrl: raw.SHROUD_URL,
+    shroudUrl: raw.SHROUD_URL ?? raw.ONECLAW_SHROUD_URL,
     shroudToken: raw.SHROUD_TOKEN,
-    shroudProvider: raw.SHROUD_PROVIDER,
+    shroudProvider: raw.SHROUD_PROVIDER ?? raw.LLM_PROVIDER,
     hermesConfigDir: raw.HERMES_CONFIG_DIR,
   });
 
@@ -51,7 +62,7 @@ export function loadConfig(
  */
 export function needsBootstrap(cfg?: Config): boolean {
   const c = cfg ?? config;
-  return !c.oneClawAgentApiKey;
+  return !c.oneClawAgentApiKey && !c.oneClawAgentToken;
 }
 
 /**

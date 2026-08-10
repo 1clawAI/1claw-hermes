@@ -70,6 +70,11 @@ export {
 } from "./audit/index.js";
 export { VaultError, ConfigError } from "./errors.js";
 export {
+  setupHermesRuntime,
+  runtimeCredentialsReady,
+  type RuntimeSetupOptions,
+} from "./runtime/setup.js";
+export {
   generateDrafts as cmoGenerateDrafts,
   buildSystemPrompt as cmoBuildSystemPrompt,
   postToSnap as cmoPostToSnap,

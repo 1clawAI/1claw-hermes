@@ -413,19 +413,30 @@ await storeMemory("User prefers concise answers with code examples");
 const results = await searchMemory("communication preferences");
 ```
 
-### Runtimes
+### Runtimes (1Claw cloud)
 
-Deploy and manage Hermes agent runtimes — containerized execution with secret injection:
+Hermes cloud runtimes call `setupHermesRuntime()` via `1claw-hermes-runtime-start`
+(`/app/hermes-agent-start.sh`) using `ONECLAW_AGENT_TOKEN` injected by Vault.
+Dashboard chat stays on the template chat-bridge; Hermes gateway runs as
+`STARTUP_COMMAND` for MCP tools and messaging channels.
+
+```bash
+# Inside runtime-hermes container (automatic on start):
+1claw-hermes-runtime-start   # patch ~/.hermes MCP + model
+hermes gateway               # agent process (default)
+```
+
+Environment: `ONECLAW_AGENT_TOKEN`, `ONECLAW_VAULT_ID`, `ONECLAW_SHROUD_ENABLED`,
+`LLM_PROVIDER`, `LLM_MODEL`, `HERMES_CONFIG_DIR`.
+
+Programmatic:
 
 ```ts
-import { deployRuntime, listRuntimes } from "@workspace/1claw-hermes";
+import { setupHermesRuntime, runtimeCredentialsReady } from "@workspace/1claw-hermes";
 
-const runtime = await deployRuntime({
-  image: "my-hermes-agent:latest",
-  env: { HERMES_CONFIG_DIR: "/etc/hermes" },
-});
-
-const runtimes = await listRuntimes();
+if (runtimeCredentialsReady()) {
+  await setupHermesRuntime();
+}
 ```
 
 ### Agent Discovery
@@ -455,6 +466,7 @@ pnpm bootstrap:enroll       # enroll + stub .env only
 pnpm bootstrap:complete     # read key from .env, merge vault id
 pnpm setup                  # patch Hermes + start sidecar (after bootstrap)
 pnpm shroud                 # start sidecar only (from .env)
+1claw-hermes-runtime-start  # cloud runtime: patch Hermes from ONECLAW_* env
 ```
 
 ## Architecture

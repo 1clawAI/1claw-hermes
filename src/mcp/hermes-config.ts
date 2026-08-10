@@ -19,6 +19,10 @@ export interface PatchHermesOptions {
    * `http`: remote `mcp.1claw.xyz` with Bearer JWT (short-lived; re-run patch when 401).
    */
   transport?: HermesMcpTransport;
+  /** Pre-exchanged JWT for cloud runtimes (skips ocv_ token exchange). */
+  jwt?: string;
+  /** Required when `jwt` is set. */
+  vaultId?: string;
 }
 
 export interface HermesHttpMcpEntry {
@@ -161,7 +165,6 @@ export async function patchHermesConfig(
   configDir: string,
   options: PatchHermesOptions = {},
 ): Promise<void> {
-  const transport = options.transport ?? "stdio";
   const resolved = resolveHermesDir(configDir);
 
   await fs.promises.mkdir(resolved, { recursive: true });
@@ -169,10 +172,15 @@ export async function patchHermesConfig(
   const yamlPath = path.join(resolved, "config.yaml");
   const jsonPath = path.join(resolved, "config.json");
 
-  const entry =
-    transport === "stdio"
-      ? buildHermesStdioMcpEntry()
-      : { ...(await buildHttpEntryFromExchange()) };
+  let entry: Record<string, unknown>;
+  if (options.jwt) {
+    const vaultId = options.vaultId ?? requireVaultId();
+    entry = { ...buildHermesMcpServerEntry(options.jwt, vaultId) };
+  } else if ((options.transport ?? "stdio") === "stdio") {
+    entry = buildHermesStdioMcpEntry();
+  } else {
+    entry = { ...(await buildHttpEntryFromExchange()) };
+  }
 
   if (fs.existsSync(yamlPath)) {
     await backupFile(yamlPath);
