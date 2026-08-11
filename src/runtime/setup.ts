@@ -84,7 +84,15 @@ export async function setupHermesRuntime(
     (process.env.ONECLAW_SHROUD_ENABLED === "1" ||
       process.env.ONECLAW_SHROUD_ENABLED === "true");
 
-  if (jwt) {
+  // Prefer stdio when an ocv_ API key is available — stdio auto-refreshes
+  // tokens on each tool call, avoiding JWT expiry on long-running gateways.
+  const hasApiKey = Boolean(
+    process.env.ONECLAW_AGENT_API_KEY && !process.env.ONECLAW_AGENT_API_KEY.startsWith("eyJ"),
+  );
+
+  if (hasApiKey) {
+    await patchHermesConfig(hermesDir, { transport: "stdio" });
+  } else if (jwt) {
     await patchHermesConfig(hermesDir, { transport: "http", jwt, vaultId });
   } else {
     await patchHermesConfig(hermesDir, { transport: "stdio" });
