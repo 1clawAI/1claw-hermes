@@ -1,8 +1,10 @@
 # @workspace/1claw-hermes
 
-Integration package that wires [1Claw](https://1claw.xyz) secrets management into [Hermes Agent](https://hermes-agent.nousresearch.com) across four planes: MCP-based secret fetching, optional Shroud LLM proxy, per-subagent scoped identities, and Intents API transaction signing. **Shroud does not turn on by itself:** you either run the [Shroud sidecar](#hermes-and-shroud-use-the-sidecar) in front of Hermes, or call Shroud from TypeScript via [`createShroudClient()`](#route-llm-calls-through-shroud-programmatically).
+[Hermes Agent](https://hermes-agent.nousresearch.com) runs multi-step workflows with subagents, tools, and shell access. Those agents need API keys and signing keys, but Hermes config files and chat logs are the wrong place to store them.
 
-This package is designed as a thin, typed layer over the `@1claw/sdk`. It provides opinionated defaults for Hermes workflows — ephemeral subagent identities with scoped policies, client-side guardrail validation before on-chain transactions, and atomic Hermes config patching — while staying composable enough to use in any agent framework that speaks the OpenAI chat completions API.
+This package wires [1Claw](https://1claw.xyz) into Hermes across four paths: MCP tools for just-in-time secret fetch, a Shroud sidecar for inspected LLM traffic, scoped subagent identities, and Intents API transaction signing with client-side guardrail checks before anything hits chain.
+
+It is a thin typed layer over `@1claw/sdk` with opinionated defaults for Hermes: bootstrap scripts that enroll an agent by email, atomic config patching, and guardrail validation you can run before submitting a transaction. **Shroud does not turn on by itself.** You either run the [Shroud sidecar](#hermes-and-shroud-use-the-sidecar) in front of Hermes, or call Shroud from TypeScript via [`createShroudClient()`](#route-llm-calls-through-shroud-programmatically).
 
 ## Quick Start (Bootstrap)
 
