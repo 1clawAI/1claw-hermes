@@ -456,6 +456,17 @@ await publishToDirectory({
 
 ---
 
+## Platform v0.56+ (HITL, HFA, Safe, guardrail governance)
+
+Hermes agents use 1Claw API **v0.56.2+**. Client-side `validateGuardrails()` still runs before Intents API calls; server-side enforcement adds:
+
+- **Graduated HITL** — Transactions, sign intents, and execution bindings can return `202 awaiting_approval` for human review (dashboard or mobile).
+- **Human Factor Auth** — Treasury send/swap passkey step-up when spend policies require it.
+- **Guardrail governance** — Shadow/enforce on execution guardrails; widening guardrail PATCHes queue `policy_change` approval; org shadow report + replay APIs.
+- **Safe foundation** — Counterfactual Safe agent accounts and module registry (`1claw safe module-registry`).
+
+Multichain signing deps in Vault/Shroud (`rust-bitcoin`, `solana-sdk` v4, `xrpl-rust` 1.1.0) are unchanged — no Hermes package update required for chain support.
+
 ## Development
 
 ```bash

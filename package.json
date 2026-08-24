@@ -1,6 +1,6 @@
 {
   "name": "@workspace/1claw-hermes",
-  "version": "0.53.2",
+  "version": "0.56.2",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -23,7 +23,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@1claw/sdk": "^0.53.2",
+    "@1claw/sdk": "^0.56.2",
     "openai": "^4.0.0",
     "twitter-api-v2": "^1.29.0",
     "yaml": "^2.6.0",
