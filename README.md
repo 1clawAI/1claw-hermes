@@ -1,8 +1,10 @@
 # @workspace/1claw-hermes
 
+> ⭐ **Star [1clawAI/agent-templates](https://github.com/1clawAI/agent-templates)** — ready-to-run agent templates wired to 1Claw. It is our single starred repo.
+
 [Hermes Agent](https://hermes-agent.nousresearch.com) runs multi-step workflows with subagents, tools, and shell access. Those agents need API keys and signing keys, but Hermes config files and chat logs are the wrong place to store them.
 
-This package wires [1Claw](https://1claw.xyz) into Hermes across four paths: MCP tools for just-in-time secret fetch, a Shroud sidecar for inspected LLM traffic, scoped subagent identities, and Intents API transaction signing with client-side guardrail checks before anything hits chain.
+This package wires [1Claw](https://1claw.co) into Hermes across four paths: MCP tools for just-in-time secret fetch, a Shroud sidecar for inspected LLM traffic, scoped subagent identities, and Intents API transaction signing with client-side guardrail checks before anything hits chain.
 
 It is a thin typed layer over `@1claw/sdk` with opinionated defaults for Hermes: bootstrap scripts that enroll an agent by email, atomic config patching, and guardrail validation you can run before submitting a transaction. **Shroud does not turn on by itself.** You either run the [Shroud sidecar](#hermes-and-shroud-use-the-sidecar) in front of Hermes, or call Shroud from TypeScript via [`createShroudClient()`](#route-llm-calls-through-shroud-programmatically).
 
@@ -74,10 +76,10 @@ All environment variables are validated at startup with Zod. The only variable s
 | `ONECLAW_AGENT_ID` | No | auto-written on `bootstrap complete` | Agent UUID — **required** by the raw `shroud-sidecar` binary; `pnpm shroud` can append it via token exchange if missing |
 | `ONECLAW_ENV_FILE` | No | — | Absolute path to `.env` when it is not next to this package (cloud / custom layout). Same as `pnpm shroud --env-file` / `pnpm setup --env-path` |
 | `ONECLAW_VAULT_ID` | No | auto-discovered | UUID of the vault to operate on |
-| `ONECLAW_API_BASE` | No | `https://api.1claw.xyz` | Vault API base URL |
-| `ONECLAW_MCP_URL` | No | `https://mcp.1claw.xyz/mcp` | MCP server endpoint |
+| `ONECLAW_API_BASE` | No | `https://api.1claw.co` | Vault API base URL |
+| `ONECLAW_MCP_URL` | No | `https://mcp.1claw.co/mcp` | MCP server endpoint |
 | `ONECLAW_MCP_TOKEN` | No | — | Pre-exchanged JWT (auto-exchanged if blank) |
-| `SHROUD_URL` | No | `https://shroud.1claw.xyz/v1` | Shroud TEE proxy URL (`createShroudClient` in Node) |
+| `SHROUD_URL` | No | `https://shroud.1claw.co/v1` | Shroud TEE proxy URL (`createShroudClient` in Node) |
 | `SHROUD_TOKEN` | No | uses agent JWT | Bearer for Shroud (`createShroudClient`); not used by the sidecar binary |
 | `SHROUD_PROVIDER` | No | `anthropic` | Upstream for `createShroudClient` only — **Hermes + sidecar** uses `ONECLAW_DEFAULT_PROVIDER` on the **sidecar** process ([below](#hermes-and-shroud-use-the-sidecar)) |
 | `HERMES_CONFIG_DIR` | No | `~/.hermes` | Path to Hermes config directory |
@@ -100,7 +102,7 @@ await patchHermesConfig("~/.hermes");
 
 **Default (`stdio`) — recommended:** writes a **stdio** server that runs `npx -y @1claw/mcp` with `ONECLAW_AGENT_API_KEY`, `ONECLAW_VAULT_ID`, and `ONECLAW_BASE_URL` in `env`. The official MCP package **refreshes JWTs inside the process** on every request, so you are **not** embedding expiring Bearer tokens in YAML. After `bootstrap`, one patch + `/reload-mcp` and you are done.
 
-**Optional HTTP (`transport: 'http'`):** talks to `https://mcp.1claw.xyz/mcp` with `Authorization: Bearer <JWT>` and `X-Vault-ID`. JWTs expire (often ~15–60 minutes); re-run `patchHermesConfig("~/.hermes", { transport: "http" })` when auth fails.
+**Optional HTTP (`transport: 'http'`):** talks to `https://mcp.1claw.co/mcp` with `Authorization: Bearer <JWT>` and `X-Vault-ID`. JWTs expire (often ~15–60 minutes); re-run `patchHermesConfig("~/.hermes", { transport: "http" })` when auth fails.
 
 ```ts
 await patchHermesConfig("~/.hermes", { transport: "http" });
@@ -123,7 +125,7 @@ See [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/
 
 ## Hermes and Shroud: use the sidecar
 
-Hermes's **custom** OpenAI-compatible provider only sends a **base URL + API key**. Shroud expects extra headers (`X-Shroud-Provider`, agent auth). The supported pattern is to run the **[1claw Shroud sidecar](https://github.com/1clawAI/1claw-shroud-sidecar)** on your machine, point Hermes at `localhost`, and let the sidecar inject headers and forward to `https://shroud.1claw.xyz`.
+Hermes's **custom** OpenAI-compatible provider only sends a **base URL + API key**. Shroud expects extra headers (`X-Shroud-Provider`, agent auth). The supported pattern is to run the **[1claw Shroud sidecar](https://github.com/1clawAI/1claw-shroud-sidecar)** on your machine, point Hermes at `localhost`, and let the sidecar inject headers and forward to `https://shroud.1claw.co`.
 
 ### One command (after bootstrap)
 
@@ -253,7 +255,7 @@ If Hermes runs **inside** a container, `localhost:8080` is **inside that contain
 
 ## Route LLM calls through Shroud (programmatically)
 
-From **TypeScript/Node** (not the Hermes binary), use `createShroudClient()` — it sets `X-Shroud-Provider` from `SHROUD_PROVIDER` and talks to `SHROUD_URL` (default `https://shroud.1claw.xyz/v1`). This path does **not** require the sidecar.
+From **TypeScript/Node** (not the Hermes binary), use `createShroudClient()` — it sets `X-Shroud-Provider` from `SHROUD_PROVIDER` and talks to `SHROUD_URL` (default `https://shroud.1claw.co/v1`). This path does **not** require the sidecar.
 
 ```ts
 import { createShroudClient } from "@workspace/1claw-hermes";
