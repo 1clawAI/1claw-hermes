@@ -2,15 +2,15 @@ import { z } from "zod";
 import { ConfigError } from "./errors.js";
 
 const schema = z.object({
-  oneClawApiBase: z.string().url().default("https://api.1claw.xyz"),
+  oneClawApiBase: z.string().url().default("https://api.1claw.co"),
   oneClawAgentId: z.string().uuid().optional(),
   oneClawVaultId: z.string().uuid().optional(),
   oneClawAgentApiKey: z.string().startsWith("ocv_").optional(),
   /** Runtime containers inject a short-lived JWT instead of an ocv_ key. */
   oneClawAgentToken: z.string().optional(),
-  oneClawMcpUrl: z.string().url().default("https://mcp.1claw.xyz/mcp"),
+  oneClawMcpUrl: z.string().url().default("https://mcp.1claw.co/mcp"),
   oneClawMcpToken: z.string().optional(),
-  shroudUrl: z.string().url().default("https://shroud.1claw.xyz/v1"),
+  shroudUrl: z.string().url().default("https://shroud.1claw.co/v1"),
   shroudToken: z.string().optional(),
   shroudProvider: z
     .enum(["anthropic", "openai", "google", "mistral", "cohere"])

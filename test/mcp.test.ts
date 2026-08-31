@@ -21,11 +21,11 @@ vi.mock("@1claw/sdk", () => ({
 
 vi.mock("../src/config.js", () => ({
   config: {
-    oneClawApiBase: "https://api.1claw.xyz",
+    oneClawApiBase: "https://api.1claw.co",
     oneClawVaultId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     oneClawAgentApiKey: "ocv_test_key_123",
-    oneClawMcpUrl: "https://mcp.1claw.xyz/mcp",
-    shroudUrl: "https://shroud.1claw.xyz/v1",
+    oneClawMcpUrl: "https://mcp.1claw.co/mcp",
+    shroudUrl: "https://shroud.1claw.co/v1",
     shroudToken: "shroud-tok",
     shroudProvider: "anthropic",
     hermesConfigDir: "~/.hermes",
@@ -45,7 +45,7 @@ describe("buildMcpEntry", () => {
   it("returns the correct shape with Authorization and X-Vault-ID headers", () => {
     const entry = buildMcpEntry("my-jwt", "vault-123");
     expect(entry).toEqual({
-      url: "https://mcp.1claw.xyz/mcp",
+      url: "https://mcp.1claw.co/mcp",
       headers: {
         Authorization: "Bearer my-jwt",
         "X-Vault-ID": "vault-123",
@@ -55,7 +55,7 @@ describe("buildMcpEntry", () => {
 
   it("uses the MCP URL from config", () => {
     const entry = buildMcpEntry("tok", "v");
-    expect(entry.url).toBe("https://mcp.1claw.xyz/mcp");
+    expect(entry.url).toBe("https://mcp.1claw.co/mcp");
   });
 });
 
@@ -90,7 +90,7 @@ describe("patchHermesConfig", () => {
     expect(oneclaw.env.ONECLAW_VAULT_ID).toBe(
       "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     );
-    expect(oneclaw.env.ONECLAW_BASE_URL).toBe("https://api.1claw.xyz");
+    expect(oneclaw.env.ONECLAW_BASE_URL).toBe("https://api.1claw.co");
   });
 
   it("http transport writes remote MCP URL with Bearer JWT", async () => {
@@ -104,7 +104,7 @@ describe("patchHermesConfig", () => {
       url: string;
       headers: Record<string, string>;
     };
-    expect(oneclaw.url).toBe("https://mcp.1claw.xyz/mcp");
+    expect(oneclaw.url).toBe("https://mcp.1claw.co/mcp");
     expect(oneclaw.headers.Authorization).toBe("Bearer jwt-token-abc");
     expect(oneclaw.headers["X-Vault-ID"]).toBe(
       "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",

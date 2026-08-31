@@ -97,7 +97,7 @@ export async function ensureAgentIdInDotEnv(envPath: string): Promise<void> {
   }
   const apiKey = parsed.ONECLAW_AGENT_API_KEY?.trim() ?? "";
   if (!apiKey.startsWith("ocv_")) return;
-  const apiBase = parsed.ONECLAW_API_BASE?.trim() || "https://api.1claw.xyz";
+  const apiBase = parsed.ONECLAW_API_BASE?.trim() || "https://api.1claw.co";
 
   let tokenData: TokenExchangeResponse;
   try {
@@ -207,8 +207,8 @@ function buildEnvContent(vars: Record<string, string>): string {
 
   lines.push("");
   lines.push("# Optional overrides (uncomment to customize):");
-  lines.push("# ONECLAW_MCP_URL=https://mcp.1claw.xyz/mcp");
-  lines.push("# SHROUD_URL=https://shroud.1claw.xyz/v1");
+  lines.push("# ONECLAW_MCP_URL=https://mcp.1claw.co/mcp");
+  lines.push("# SHROUD_URL=https://shroud.1claw.co/v1");
   lines.push("# SHROUD_PROVIDER=anthropic");
   lines.push("# HERMES_CONFIG_DIR=~/.hermes");
   lines.push("");
@@ -253,7 +253,7 @@ async function atomicWrite(filePath: string, content: string): Promise<void> {
 export async function bootstrapEnroll(
   options: EnrollOnlyOptions,
 ): Promise<BootstrapPendingResult> {
-  const apiBase = options.apiBase ?? "https://api.1claw.xyz";
+  const apiBase = options.apiBase ?? "https://api.1claw.co";
   const envPath = options.envPath ?? defaultEnvPath();
 
   log(`Enrolling agent "${options.agentName}" for ${options.email}...`);
@@ -324,7 +324,7 @@ export async function completeBootstrapFromEnv(
   const resolvedBase =
     options.apiBase?.trim() ||
     parsed.ONECLAW_API_BASE?.trim() ||
-    "https://api.1claw.xyz";
+    "https://api.1claw.co";
   const apiKey = parsed.ONECLAW_AGENT_API_KEY?.trim() ?? "";
 
   if (!apiKey.startsWith("ocv_")) {
@@ -347,7 +347,7 @@ export async function completeBootstrapFromEnv(
     log(`Vault: ${vaultId} (auto-discovered)`);
   } else {
     log(
-      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.xyz",
+      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.co",
     );
   }
 
@@ -422,7 +422,7 @@ async function finishBootstrapWithKey(params: {
     log(`Vault: ${vaultId} (auto-discovered)`);
   } else {
     log(
-      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.xyz",
+      "No vault auto-discovered — set ONECLAW_VAULT_ID manually or create a vault at https://1claw.co",
     );
   }
 
@@ -475,7 +475,7 @@ async function finishBootstrapWithKey(params: {
 export async function bootstrap(
   options: BootstrapOptions,
 ): Promise<BootstrapResult> {
-  const apiBase = options.apiBase ?? "https://api.1claw.xyz";
+  const apiBase = options.apiBase ?? "https://api.1claw.co";
   const envPath = options.envPath ?? defaultEnvPath();
   const shroudProvider = options.shroudProvider ?? "anthropic";
 

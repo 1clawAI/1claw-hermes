@@ -29,7 +29,7 @@ function resolveSidecarBaseUrl(shroudEnabled: boolean): string {
   if (openaiBase) {
     return openaiBase.endsWith("/v1") ? openaiBase : `${openaiBase}/v1`;
   }
-  const shroud = (process.env.ONECLAW_SHROUD_URL || "https://shroud.1claw.xyz").replace(
+  const shroud = (process.env.ONECLAW_SHROUD_URL || "https://shroud.1claw.co").replace(
     /\/$/,
     "",
   );

@@ -16,7 +16,7 @@ vi.mock("@1claw/sdk", () => ({
 
 vi.mock("../src/config.js", () => ({
   config: {
-    oneClawApiBase: "https://api.1claw.xyz",
+    oneClawApiBase: "https://api.1claw.co",
     oneClawVaultId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     oneClawAgentApiKey: "ocv_test_key_123",
   },

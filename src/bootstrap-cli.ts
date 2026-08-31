@@ -20,7 +20,7 @@ Options (default / enroll / full bootstrap):
   --email <email>     Human operator email (required or prompted)
   --name <name>       Agent name (required or prompted)
   --api-key <key>     Pre-approved ocv_ key (full bootstrap only; avoid — prefer .env + complete)
-  --api-base <url>    API base URL (default: https://api.1claw.xyz)
+  --api-base <url>    API base URL (default: https://api.1claw.co)
   --env-path <path>   Path to .env file (default: .env in package root)
   --provider <name>   Shroud LLM provider (default: anthropic)
 

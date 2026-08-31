@@ -12,9 +12,9 @@ vi.stubGlobal("fetch", mockFetch);
 describe("needsBootstrap", () => {
   it("returns true when API key is missing", () => {
     const cfg = {
-      oneClawApiBase: "https://api.1claw.xyz",
-      oneClawMcpUrl: "https://mcp.1claw.xyz/mcp",
-      shroudUrl: "https://shroud.1claw.xyz/v1",
+      oneClawApiBase: "https://api.1claw.co",
+      oneClawMcpUrl: "https://mcp.1claw.co/mcp",
+      shroudUrl: "https://shroud.1claw.co/v1",
       shroudProvider: "anthropic" as const,
       hermesConfigDir: "~/.hermes",
     } as Config;
@@ -24,10 +24,10 @@ describe("needsBootstrap", () => {
 
   it("returns false when API key is present", () => {
     const cfg = {
-      oneClawApiBase: "https://api.1claw.xyz",
+      oneClawApiBase: "https://api.1claw.co",
       oneClawAgentApiKey: "ocv_test_key_123",
-      oneClawMcpUrl: "https://mcp.1claw.xyz/mcp",
-      shroudUrl: "https://shroud.1claw.xyz/v1",
+      oneClawMcpUrl: "https://mcp.1claw.co/mcp",
+      shroudUrl: "https://shroud.1claw.co/v1",
       shroudProvider: "anthropic" as const,
       hermesConfigDir: "~/.hermes",
     } as Config;
@@ -104,7 +104,7 @@ describe("bootstrap", () => {
       email: "alice@acme.com",
       agentName: "my-test-agent",
       apiKey: "ocv_test_key_headless",
-      apiBase: "https://api.1claw.xyz",
+      apiBase: "https://api.1claw.co",
       envPath,
     });
 
@@ -117,7 +117,7 @@ describe("bootstrap", () => {
     const content = fs.readFileSync(envPath, "utf-8");
     expect(content).toContain("ONECLAW_AGENT_API_KEY=ocv_test_key_headless");
     expect(content).toContain("ONECLAW_VAULT_ID=vault-def-456");
-    expect(content).toContain("ONECLAW_API_BASE=https://api.1claw.xyz");
+    expect(content).toContain("ONECLAW_API_BASE=https://api.1claw.co");
   });
 
   it("calls enrollment endpoint with correct payload", async () => {
@@ -273,7 +273,7 @@ describe("completeBootstrapFromEnv", () => {
     const envPath = path.join(tmpDir, ".env");
     fs.writeFileSync(
       envPath,
-      "ONECLAW_AGENT_API_KEY=ocv_from_file\nONECLAW_API_BASE=https://api.1claw.xyz\n",
+      "ONECLAW_AGENT_API_KEY=ocv_from_file\nONECLAW_API_BASE=https://api.1claw.co\n",
     );
 
     const originalIsTTY = process.stdin.isTTY;

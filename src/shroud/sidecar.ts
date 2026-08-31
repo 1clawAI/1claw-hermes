@@ -24,7 +24,7 @@ export interface SidecarOptions {
   envPath?: string;
   /** Skip auto-install if binary not found (default: false — will try install.sh). */
   skipInstall?: boolean;
-  /** Shroud URL override (default: https://shroud.1claw.xyz). */
+  /** Shroud URL override (default: https://shroud.1claw.co). */
   shroudUrl?: string;
 }
 
@@ -139,7 +139,7 @@ export function startSidecar(options: SidecarOptions = {}): ChildProcess {
     ONECLAW_SHROUD_URL:
       options.shroudUrl ??
       process.env.ONECLAW_SHROUD_URL ??
-      "https://shroud.1claw.xyz",
+      "https://shroud.1claw.co",
   };
 
   if (agentId) env.ONECLAW_AGENT_ID = agentId;

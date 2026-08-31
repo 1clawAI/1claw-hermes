@@ -6,11 +6,11 @@ vi.mock("@1claw/sdk", () => ({
 
 vi.mock("../src/config.js", () => ({
   config: {
-    oneClawApiBase: "https://api.1claw.xyz",
+    oneClawApiBase: "https://api.1claw.co",
     oneClawVaultId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
     oneClawAgentApiKey: "ocv_test_key_123",
-    oneClawMcpUrl: "https://mcp.1claw.xyz/mcp",
-    shroudUrl: "https://shroud.1claw.xyz/v1",
+    oneClawMcpUrl: "https://mcp.1claw.co/mcp",
+    shroudUrl: "https://shroud.1claw.co/v1",
     shroudToken: "shroud-tok",
     shroudProvider: "anthropic",
     hermesConfigDir: "~/.hermes",
@@ -44,7 +44,7 @@ describe("createShroudClient", () => {
       apiKey: string;
       defaultHeaders: Record<string, string>;
     };
-    expect(client.baseURL).toBe("https://shroud.1claw.xyz/v1");
+    expect(client.baseURL).toBe("https://shroud.1claw.co/v1");
   });
 
   it("sets the apiKey to the Shroud token", () => {
