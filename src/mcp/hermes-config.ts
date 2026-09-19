@@ -16,7 +16,7 @@ export interface PatchHermesOptions {
   /**
    * `stdio` (default): `npx @1claw/mcp` with env-based `ocv_` auth; token exchange
    * runs inside the MCP process on every tool call (no JWT expiry in config).
-   * `http`: remote `mcp.1claw.xyz` with Bearer JWT (short-lived; re-run patch when 401).
+   * `http`: remote `mcp.1claw.co` with Bearer JWT (short-lived; re-run patch when 401).
    */
   transport?: HermesMcpTransport;
   /** Pre-exchanged JWT for cloud runtimes (skips ocv_ token exchange). */

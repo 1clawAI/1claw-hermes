@@ -36,7 +36,7 @@ input/output.
 ## Deployment modes
 
 - **Local stdio** — Claude Desktop, Cursor, Hermes
-- **Hosted HTTP** — `mcp.1claw.xyz`
+- **Hosted HTTP** — `mcp.1claw.co`
 - **Local-only mode** — `ONECLAW_LOCAL_ONLY=true` gives you the
   `inspect_content` tool without needing a 1claw account
 
