@@ -44,6 +44,9 @@ describe("setupHermesRuntime", () => {
     expect(yaml).toContain("provider: custom");
     expect(yaml).toContain("http://127.0.0.1:8082/v1");
     expect(yaml).toContain("google/gemini-2.5-flash");
+    // The custom (Shroud) provider must carry the injected agent JWT, or Shroud
+    // rejects the request with 401 (no usable agent key).
+    expect(yaml).toContain("api_key: eyJ.test.token");
   });
 
   it("runtimeCredentialsReady accepts JWT without ocv_ key", () => {

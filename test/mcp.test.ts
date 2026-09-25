@@ -218,6 +218,36 @@ describe("patchHermesModel", () => {
     expect(model.name).toBe("gpt-4o");
   });
 
+  it("writes model.api_key so the custom endpoint has a credential", async () => {
+    await patchHermesModel(tmpDir, {
+      sidecarBaseUrl: "https://shroud.1claw.co/v1",
+      apiKey: "eyJ.header.payload",
+    });
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, string>;
+    expect(model.provider).toBe("custom");
+    expect(model.api_key).toBe("eyJ.header.payload");
+  });
+
+  it("does not clobber an existing api_key with a blank one", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      "model:\n  provider: custom\n  api_key: existing-key\n",
+    );
+
+    await patchHermesModel(tmpDir, { apiKey: "   " });
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, string>;
+    expect(model.api_key).toBe("existing-key");
+  });
+
   it("creates a backup before overwriting", async () => {
     const configPath = path.join(tmpDir, "config.yaml");
     fs.writeFileSync(configPath, "model:\n  provider: openai\n");
@@ -257,6 +287,24 @@ describe("unpatchHermesModel", () => {
     const model = parsed.model as Record<string, unknown>;
     expect(model.provider).toBeUndefined();
     expect(model.base_url).toBeUndefined();
+    expect(model.name).toBe("gpt-4o");
+  });
+
+  it("removes the injected api_key when reverting the custom provider", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      'model:\n  provider: custom\n  base_url: "http://127.0.0.1:8080/v1"\n  api_key: eyJ.header.payload\n  name: gpt-4o\n',
+    );
+
+    await unpatchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    expect(model.provider).toBeUndefined();
+    expect(model.api_key).toBeUndefined();
     expect(model.name).toBe("gpt-4o");
   });
 

@@ -206,14 +206,25 @@ export interface PatchHermesModelOptions {
   sidecarBaseUrl?: string;
   /** Model identifier Hermes should use (e.g. `google/gemini-2.5-flash`). */
   model?: string;
+  /**
+   * Credential Hermes' `custom` (OpenAI-compatible) provider sends to the
+   * 1Claw/Shroud LLM gateway as its `Authorization: Bearer` token. Shroud
+   * accepts a pre-minted agent JWT directly, or an `ocv_` agent key / router
+   * key it exchanges. Without it Hermes has no credential for the custom
+   * endpoint and Shroud answers 401 ("invalid agent key: expected an
+   * sk-shroud-v1 router key, an ocv_ agent key, or agent_id:api_key").
+   */
+  apiKey?: string;
 }
 
 /**
- * Patch Hermes `config.yaml` so `model.provider = "custom"` and
- * `model.base_url` points at the local Shroud sidecar.
+ * Patch Hermes `config.yaml` so `model.provider = "custom"`,
+ * `model.base_url` points at the 1Claw/Shroud LLM gateway, and
+ * `model.api_key` carries the injected agent credential Shroud authenticates.
  *
- * Only touches `model.provider` and `model.base_url` — all other model
- * settings (name, temperature, etc.) are preserved.
+ * Only touches `model.provider`, `model.base_url`, and (when provided)
+ * `model.api_key` — all other model settings (name, temperature, etc.) are
+ * preserved.
  */
 export async function patchHermesModel(
   configDir: string,
@@ -243,6 +254,14 @@ export async function patchHermesModel(
 
   if (options.model) {
     modelSection.name = options.model;
+  }
+
+  // Hermes' `custom` provider reads `model.api_key` inline (built-in providers
+  // resolve creds from env/auth instead). Without it the custom endpoint has no
+  // usable credential and Shroud rejects the request with 401. Only write a
+  // non-empty value so we never clobber an existing key with a blank.
+  if (options.apiKey && options.apiKey.trim()) {
+    modelSection.api_key = options.apiKey.trim();
   }
 
   doc.model = modelSection;
@@ -275,6 +294,10 @@ export async function unpatchHermesModel(
 
   if (modelSection.provider === "custom") {
     delete modelSection.provider;
+    // The api_key we injected is only meaningful for the custom Shroud
+    // endpoint; leaving it behind would leak a stale credential onto whatever
+    // provider Hermes falls back to.
+    delete modelSection.api_key;
   }
   if (
     typeof modelSection.base_url === "string" &&

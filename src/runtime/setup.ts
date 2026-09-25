@@ -98,10 +98,23 @@ export async function setupHermesRuntime(
     await patchHermesConfig(hermesDir, { transport: "stdio" });
   }
 
+  // Credential the custom (Shroud) provider sends as its Bearer token. Prefer a
+  // long-lived ocv_ agent key when one is present (Shroud re-exchanges it as the
+  // minted JWT expires); otherwise fall back to the injected agent JWT, which
+  // Shroud verifies directly. Without this the custom endpoint has no usable
+  // credential and Shroud answers 401.
+  const ocvKey =
+    process.env.ONECLAW_AGENT_API_KEY &&
+    !process.env.ONECLAW_AGENT_API_KEY.startsWith("eyJ")
+      ? process.env.ONECLAW_AGENT_API_KEY
+      : "";
+  const modelApiKey = ocvKey || jwt || "";
+
   const sidecarBaseUrl = resolveSidecarBaseUrl(shroudEnabled);
   await patchHermesModel(hermesDir, {
     sidecarBaseUrl,
     model: resolveModelName(options.llmProvider, options.llmModel),
+    apiKey: modelApiKey,
   });
 
   return { hermesConfigDir: hermesDir, sidecarBaseUrl };
