@@ -201,6 +201,57 @@ export async function patchHermesConfig(
 // Hermes model config patching (Shroud sidecar integration)
 // ---------------------------------------------------------------------------
 
+/** Header Shroud's authenticated `POST /v1/chat/completions` requires to name the upstream. */
+export const SHROUD_PROVIDER_HEADER = "X-Shroud-Provider";
+
+/**
+ * Best-effort map of a model identifier to the Shroud upstream provider name.
+ * Accepts either a bare model id (`claude-opus-4.6`) or a `provider/model`
+ * slug (`anthropic/claude-opus-4.6`). Returns `undefined` when it cannot tell —
+ * callers should prefer an explicitly-configured provider over this guess.
+ */
+export function providerForModel(model?: string): string | undefined {
+  if (!model) return undefined;
+  const raw = model.trim().toLowerCase();
+  if (!raw) return undefined;
+
+  const known = new Set([
+    "anthropic",
+    "openai",
+    "google",
+    "mistral",
+    "cohere",
+    "openrouter",
+  ]);
+
+  // `provider/model` slug: trust a recognised prefix, otherwise map the tail.
+  const slash = raw.indexOf("/");
+  const prefix = slash > 0 ? raw.slice(0, slash) : "";
+  if (prefix && known.has(prefix)) return prefix;
+  const name = slash > 0 ? raw.slice(slash + 1) : raw;
+
+  if (name.startsWith("claude")) return "anthropic";
+  if (
+    name.startsWith("gpt") ||
+    name.startsWith("o1") ||
+    name.startsWith("o3") ||
+    name.startsWith("o4") ||
+    name.startsWith("chatgpt")
+  ) {
+    return "openai";
+  }
+  if (name.startsWith("gemini")) return "google";
+  if (
+    name.startsWith("mistral") ||
+    name.startsWith("mixtral") ||
+    name.startsWith("codestral")
+  ) {
+    return "mistral";
+  }
+  if (name.startsWith("command")) return "cohere";
+  return undefined;
+}
+
 export interface PatchHermesModelOptions {
   /** Sidecar listen address (default: `http://127.0.0.1:8080/v1`). */
   sidecarBaseUrl?: string;
@@ -215,16 +266,29 @@ export interface PatchHermesModelOptions {
    * sk-shroud-v1 router key, an ocv_ agent key, or agent_id:api_key").
    */
   apiKey?: string;
+  /**
+   * Upstream provider Shroud forwards to, written as the `X-Shroud-Provider`
+   * header on the `custom` provider's requests (`model.extra_headers`).
+   * Shroud's authenticated `POST /v1/chat/completions` REQUIRES this header
+   * (`openai`, `anthropic`, `google`, `mistral`, `cohere`, `openrouter`, …);
+   * missing → `HTTP 400: missing X-Shroud-Provider header`. When omitted,
+   * {@link patchHermesModel} derives it from {@link PatchHermesModelOptions.model}
+   * via {@link providerForModel}; when neither yields a value no header is
+   * written (nothing to guess with).
+   */
+  shroudProvider?: string;
 }
 
 /**
  * Patch Hermes `config.yaml` so `model.provider = "custom"`,
- * `model.base_url` points at the 1Claw/Shroud LLM gateway, and
- * `model.api_key` carries the injected agent credential Shroud authenticates.
+ * `model.base_url` points at the 1Claw/Shroud LLM gateway, `model.api_key`
+ * carries the injected agent credential Shroud authenticates, and
+ * `model.extra_headers` carries the `X-Shroud-Provider` header Shroud requires
+ * to name the upstream.
  *
- * Only touches `model.provider`, `model.base_url`, and (when provided)
- * `model.api_key` — all other model settings (name, temperature, etc.) are
- * preserved.
+ * Only touches `model.provider`, `model.base_url`, and (when derivable)
+ * `model.api_key` / `model.extra_headers["X-Shroud-Provider"]` — all other
+ * model settings (name, temperature, existing headers, etc.) are preserved.
  */
 export async function patchHermesModel(
   configDir: string,
@@ -264,6 +328,27 @@ export async function patchHermesModel(
     modelSection.api_key = options.apiKey.trim();
   }
 
+  // Shroud's authenticated /v1/chat/completions requires an X-Shroud-Provider
+  // header naming the upstream; missing → "HTTP 400: missing X-Shroud-Provider
+  // header" before the model runs. Hermes' `custom` provider forwards
+  // `model.extra_headers` verbatim on every LLM request and preserves them
+  // across `/model` switches and client rebuilds, so that is where it belongs.
+  // Prefer an explicitly-configured provider; otherwise derive it from the
+  // model id. NOTE: the header is static per config write — if the operator
+  // switches to a model from a *different* upstream via `/model` without a
+  // re-patch, this value can go stale (documented limitation).
+  const shroudProvider =
+    (options.shroudProvider && options.shroudProvider.trim().toLowerCase()) ||
+    providerForModel(options.model);
+  if (shroudProvider) {
+    const existingHeaders =
+      (modelSection.extra_headers as Record<string, unknown> | undefined) ?? {};
+    modelSection.extra_headers = {
+      ...existingHeaders,
+      [SHROUD_PROVIDER_HEADER]: shroudProvider,
+    };
+  }
+
   doc.model = modelSection;
 
   const out = stringifyYaml(doc, { lineWidth: 100 });
@@ -298,6 +383,20 @@ export async function unpatchHermesModel(
     // endpoint; leaving it behind would leak a stale credential onto whatever
     // provider Hermes falls back to.
     delete modelSection.api_key;
+    // Likewise the X-Shroud-Provider header only makes sense for the Shroud
+    // endpoint; strip it (and an emptied extra_headers map) so it does not ride
+    // along to the fallback provider. Preserve any other headers the user set.
+    const headers = modelSection.extra_headers as
+      | Record<string, unknown>
+      | undefined;
+    if (headers && typeof headers === "object" && !Array.isArray(headers)) {
+      delete headers[SHROUD_PROVIDER_HEADER];
+      if (Object.keys(headers).length === 0) {
+        delete modelSection.extra_headers;
+      } else {
+        modelSection.extra_headers = headers;
+      }
+    }
   }
   if (
     typeof modelSection.base_url === "string" &&

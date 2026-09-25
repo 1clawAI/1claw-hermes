@@ -47,6 +47,9 @@ describe("setupHermesRuntime", () => {
     // The custom (Shroud) provider must carry the injected agent JWT, or Shroud
     // rejects the request with 401 (no usable agent key).
     expect(yaml).toContain("api_key: eyJ.test.token");
+    // ...and X-Shroud-Provider (from LLM_PROVIDER=google), or Shroud rejects the
+    // request with "HTTP 400: missing X-Shroud-Provider header".
+    expect(yaml).toContain("X-Shroud-Provider: google");
   });
 
   it("runtimeCredentialsReady accepts JWT without ocv_ key", () => {

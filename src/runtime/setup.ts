@@ -110,11 +110,24 @@ export async function setupHermesRuntime(
       : "";
   const modelApiKey = ocvKey || jwt || "";
 
+  // Shroud requires an X-Shroud-Provider header naming the upstream. Prefer an
+  // explicitly-injected provider hint (same env the dashboard bridge reads:
+  // LLM_PROVIDER / ONECLAW_DEFAULT_PROVIDER, plus the Shroud-specific vars);
+  // patchHermesModel falls back to deriving it from the model id when unset.
+  const shroudProvider =
+    options.llmProvider ||
+    process.env.ONECLAW_SHROUD_PROVIDER ||
+    process.env.LLM_PROVIDER ||
+    process.env.ONECLAW_DEFAULT_PROVIDER ||
+    process.env.SHROUD_PROVIDER ||
+    undefined;
+
   const sidecarBaseUrl = resolveSidecarBaseUrl(shroudEnabled);
   await patchHermesModel(hermesDir, {
     sidecarBaseUrl,
     model: resolveModelName(options.llmProvider, options.llmModel),
     apiKey: modelApiKey,
+    shroudProvider,
   });
 
   return { hermesConfigDir: hermesDir, sidecarBaseUrl };

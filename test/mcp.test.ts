@@ -39,6 +39,7 @@ import {
   patchHermesConfig,
   patchHermesModel,
   unpatchHermesModel,
+  providerForModel,
 } from "../src/mcp/index.js";
 
 describe("buildMcpEntry", () => {
@@ -248,6 +249,67 @@ describe("patchHermesModel", () => {
     expect(model.api_key).toBe("existing-key");
   });
 
+  it("writes X-Shroud-Provider from an explicit shroudProvider", async () => {
+    await patchHermesModel(tmpDir, {
+      sidecarBaseUrl: "https://shroud.1claw.co/v1",
+      model: "claude-opus-4.6",
+      shroudProvider: "Anthropic",
+    });
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    const headers = model.extra_headers as Record<string, string>;
+    // Explicit value wins and is normalised to Shroud's lowercase provider ids.
+    expect(headers["X-Shroud-Provider"]).toBe("anthropic");
+  });
+
+  it("derives X-Shroud-Provider from the model id when not explicit", async () => {
+    await patchHermesModel(tmpDir, {
+      sidecarBaseUrl: "https://shroud.1claw.co/v1",
+      model: "claude-opus-4.6",
+    });
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    const headers = model.extra_headers as Record<string, string>;
+    expect(headers["X-Shroud-Provider"]).toBe("anthropic");
+  });
+
+  it("preserves other extra_headers when injecting X-Shroud-Provider", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      "model:\n  extra_headers:\n    X-Client: hermes\n",
+    );
+
+    await patchHermesModel(tmpDir, {
+      model: "gemini-2.5-flash",
+      shroudProvider: "google",
+    });
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    const headers = model.extra_headers as Record<string, string>;
+    expect(headers["X-Client"]).toBe("hermes");
+    expect(headers["X-Shroud-Provider"]).toBe("google");
+  });
+
+  it("omits X-Shroud-Provider when it cannot be derived", async () => {
+    await patchHermesModel(tmpDir, { model: "some-unknown-model" });
+
+    const parsed = parseYaml(
+      fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    expect(model.extra_headers).toBeUndefined();
+  });
+
   it("creates a backup before overwriting", async () => {
     const configPath = path.join(tmpDir, "config.yaml");
     fs.writeFileSync(configPath, "model:\n  provider: openai\n");
@@ -308,8 +370,71 @@ describe("unpatchHermesModel", () => {
     expect(model.name).toBe("gpt-4o");
   });
 
+  it("removes the injected X-Shroud-Provider header but keeps other headers", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      'model:\n  provider: custom\n  base_url: "http://127.0.0.1:8080/v1"\n  extra_headers:\n    X-Shroud-Provider: anthropic\n    X-Client: hermes\n',
+    );
+
+    await unpatchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    const headers = model.extra_headers as Record<string, string>;
+    expect(headers["X-Shroud-Provider"]).toBeUndefined();
+    expect(headers["X-Client"]).toBe("hermes");
+  });
+
+  it("drops extra_headers entirely when only X-Shroud-Provider was set", async () => {
+    const configPath = path.join(tmpDir, "config.yaml");
+    fs.writeFileSync(
+      configPath,
+      'model:\n  provider: custom\n  base_url: "http://127.0.0.1:8080/v1"\n  extra_headers:\n    X-Shroud-Provider: anthropic\n',
+    );
+
+    await unpatchHermesModel(tmpDir);
+
+    const parsed = parseYaml(
+      fs.readFileSync(configPath, "utf-8"),
+    ) as Record<string, unknown>;
+    const model = parsed.model as Record<string, unknown>;
+    expect(model.extra_headers).toBeUndefined();
+  });
+
   it("no-ops when no config.yaml exists", async () => {
     await unpatchHermesModel(tmpDir);
     expect(fs.readdirSync(tmpDir).length).toBe(0);
+  });
+});
+
+describe("providerForModel", () => {
+  it("maps well-known model families to Shroud providers", () => {
+    expect(providerForModel("claude-opus-4.6")).toBe("anthropic");
+    expect(providerForModel("gpt-4o")).toBe("openai");
+    expect(providerForModel("o3-mini")).toBe("openai");
+    expect(providerForModel("chatgpt-4o-latest")).toBe("openai");
+    expect(providerForModel("gemini-2.5-flash")).toBe("google");
+    expect(providerForModel("mistral-large-latest")).toBe("mistral");
+    expect(providerForModel("command-r-plus")).toBe("cohere");
+  });
+
+  it("trusts a recognised provider/model slug prefix", () => {
+    expect(providerForModel("anthropic/claude-opus-4.6")).toBe("anthropic");
+    expect(providerForModel("google/gemini-2.5-flash")).toBe("google");
+    expect(providerForModel("openrouter/some-model")).toBe("openrouter");
+  });
+
+  it("falls back to the model tail for an unknown slug prefix", () => {
+    expect(providerForModel("vendor/claude-3-5-sonnet")).toBe("anthropic");
+  });
+
+  it("returns undefined when it cannot tell", () => {
+    expect(providerForModel(undefined)).toBeUndefined();
+    expect(providerForModel("")).toBeUndefined();
+    expect(providerForModel("   ")).toBeUndefined();
+    expect(providerForModel("some-unknown-model")).toBeUndefined();
   });
 });
