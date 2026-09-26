@@ -9,13 +9,18 @@ import type { ChildProcess } from "node:child_process";
  * request into a {@link HermesGenerateRequest}, hands it to a `HermesDriver`,
  * and translates the driver's output back into OpenAI response / SSE shapes.
  *
- * Hermes (Nous Research) is installed at image-build time and exposes **no
- * documented HTTP chat surface** — `hermes gateway` is launched by
- * `packages/runtime-base/templates/shared/hermes-agent-start.sh` as
- * `exec hermes gateway` (no `--port`). We therefore define the driver as an
- * interface so the *concrete* invocation (a subprocess/stdio call to the
- * `hermes` CLI today, a native HTTP surface tomorrow) can change without
- * touching the well-tested translation layer.
+ * NOTE (2026-09): Hermes (Nous Research) DOES ship a native OpenAI-compatible
+ * HTTP surface — the API server built into `hermes gateway`, listening on
+ * loopback :8642 when `API_SERVER_ENABLED=true` + `API_SERVER_KEY` are set. The
+ * runtime now enables it in
+ * `packages/runtime-base/templates/shared/hermes-agent-start.sh` and proxies
+ * dashboard chat straight to it (native-agent-server.js), so this
+ * `HermesDriver` / subprocess adapter is **no longer on the runtime path** — it
+ * is retained as a legacy/experimental seam only. If a subprocess driver is
+ * ever needed again, the real one-shot CLI is
+ * `hermes chat --oneshot -q "<prompt>"` (or `--query-file -` to read the prompt
+ * from stdin, `--format stream-json` for machine-readable events); the default
+ * argv below does NOT match that contract.
  *
  * Tests mock this seam; they never spawn a real process.
  */
@@ -104,11 +109,13 @@ export interface SubprocessHermesDriverOptions {
   /** Executable to invoke (default: `hermes`). */
   command?: string;
   /**
-   * Arguments. NOTE: Hermes exposes no documented one-shot chat command, so the
-   * default here is a **placeholder** that must be tuned to the real CLI when
-   * the concrete invocation is finalised. The adapter's translation contract
-   * (stdin prompt in, text deltas out) is what is guaranteed and tested — the
-   * exact argv is intentionally the soft part of this seam.
+   * Arguments. NOTE: the default below (`run --json --stream`) does NOT match
+   * Hermes' real one-shot CLI (`hermes chat --oneshot -q "<prompt>"` /
+   * `--query-file -` / `--format stream-json`) and this subprocess driver is not
+   * used by the runtime — the runtime talks to Hermes' native API server on
+   * :8642 instead (see the file header). If you revive this seam, set `args` +
+   * `renderStdin` to the real contract. The adapter's translation layer around
+   * the driver (stdin in, text deltas out) is the guaranteed, tested part.
    */
   args?: string[];
   /** Extra env for the child (merged over `process.env`). */
@@ -124,7 +131,9 @@ export interface SubprocessHermesDriverOptions {
 }
 
 const DEFAULT_HERMES_COMMAND = "hermes";
-// Placeholder — see SubprocessHermesDriverOptions.args.
+// Legacy placeholder — does NOT match Hermes' real one-shot CLI and is unused by
+// the runtime (which uses Hermes' :8642 API server). See the file header and
+// SubprocessHermesDriverOptions.args.
 const DEFAULT_HERMES_ARGS = ["run", "--json", "--stream"];
 
 function defaultRenderStdin(req: HermesGenerateRequest): string {

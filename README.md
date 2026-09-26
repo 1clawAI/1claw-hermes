@@ -421,8 +421,14 @@ const results = await searchMemory("communication preferences");
 
 Hermes cloud runtimes call `setupHermesRuntime()` via `1claw-hermes-runtime-start`
 (`/app/hermes-agent-start.sh`) using `ONECLAW_AGENT_TOKEN` injected by Vault.
-Dashboard chat stays on the template chat-bridge; Hermes gateway runs as
-`STARTUP_COMMAND` for MCP tools and messaging channels.
+`hermes gateway` runs as `STARTUP_COMMAND` for MCP tools and messaging channels,
+and (since 2026-09) also exposes Hermes' built-in OpenAI-compatible API server on
+loopback :8642 (`API_SERVER_ENABLED=true`, `API_SERVER_KEY` set to a 0600
+loopback token). The dashboard runtime chat proxies straight to that API server
+(native-agent-server.js "native" mode), so it runs the SAME agent as the Terminal
+TUI — same model, MCP toolset, skills and memory — instead of the bridge's own
+LLM loop. The subprocess adapter in `src/adapter/` is a legacy fallback and is no
+longer on the runtime path.
 
 ```bash
 # Inside runtime-hermes container (automatic on start):
