@@ -7,7 +7,11 @@ vi.mock("@1claw/sdk", () => ({
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { setupHermesRuntime, runtimeCredentialsReady } from "../src/runtime/setup.js";
+import {
+  setupHermesRuntime,
+  runtimeCredentialsReady,
+  baseUrlMayHold1ClawCredential,
+} from "../src/runtime/setup.js";
 
 describe("setupHermesRuntime", () => {
   let tmpDir: string;
@@ -54,5 +58,74 @@ describe("setupHermesRuntime", () => {
 
   it("runtimeCredentialsReady accepts JWT without ocv_ key", () => {
     expect(runtimeCredentialsReady()).toBe(true);
+  });
+
+  // HERMESCRED-M1, at the call site. The check above proves the predicate is
+  // correct; this proves it is actually consulted before the credential is
+  // written. Without it the predicate could be perfect and unused.
+  it("never writes the agent credential for a non-1Claw base URL", async () => {
+    process.env.ONECLAW_SHROUD_ENABLED = "0";
+    process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    process.env.OPENAI_API_KEY = "sk-tenants-own-key";
+
+    const result = await setupHermesRuntime();
+    expect(result.sidecarBaseUrl).toBe("https://openrouter.ai/api/v1");
+
+    const yaml = fs.readFileSync(path.join(tmpDir, "config.yaml"), "utf8");
+
+    // Scoped to the `model:` block on purpose. The JWT legitimately stays in
+    // `mcp_servers:`, whose URL is mcp.1claw.co — that Authorization header
+    // goes to us. It is only the model provider that now talks to OpenRouter,
+    // and that is the one that must not carry a vault credential.
+    const modelBlock = yaml.slice(yaml.indexOf("model:"));
+    expect(modelBlock).not.toContain("eyJ.test.token");
+    expect(modelBlock).toContain("api_key: sk-tenants-own-key");
+
+    delete process.env.OPENAI_BASE_URL;
+    delete process.env.OPENAI_API_KEY;
+  });
+});
+
+/**
+ * HERMESCRED-M1. The Hermes custom provider sends its `api_key` as a Bearer
+ * token to whatever `OPENAI_BASE_URL` resolves to. That key used to be the
+ * agent's vault credential unconditionally, so a tenant who pointed the base
+ * URL at any third party — by mistake or on purpose — handed that host a token
+ * carrying the agent's scopes for its whole TTL.
+ */
+describe("baseUrlMayHold1ClawCredential", () => {
+  it("trusts the in-container sidecar and 1Claw's own hosts", () => {
+    for (const url of [
+      "http://127.0.0.1:8082/v1",
+      "http://[::1]:8082/v1",
+      "https://shroud.1claw.co/v1",
+      "https://shroud.1claw.xyz/v1",
+      "https://1claw.co/v1",
+    ]) {
+      expect(baseUrlMayHold1ClawCredential(url), url).toBe(true);
+    }
+  });
+
+  it("refuses every host that is not ours", () => {
+    for (const url of [
+      // The benign misconfiguration from the finding.
+      "https://openrouter.ai/api/v1",
+      "https://evil.example/v1",
+      // Suffix-match traps: both contain "1claw.co" as a substring.
+      "https://shroud.1claw.co.evil.example/v1",
+      "https://not1claw.co/v1",
+      // Plaintext to a remote host: a pinned host over http is still readable
+      // by anything on the path.
+      "http://shroud.1claw.co/v1",
+      // Loopback-adjacent but not loopback. `localhost` is /etc/hosts-settable
+      // inside the container, and 10.x is somebody else's machine.
+      "http://localhost:8082/v1",
+      "http://10.0.0.5:8082/v1",
+      // Unparseable input must fail closed, not throw.
+      "",
+      "not a url",
+    ]) {
+      expect(baseUrlMayHold1ClawCredential(url), url).toBe(false);
+    }
   });
 });

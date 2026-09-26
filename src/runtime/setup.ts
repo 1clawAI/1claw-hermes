@@ -36,6 +36,44 @@ function resolveSidecarBaseUrl(shroudEnabled: boolean): string {
   return `${shroud}/v1`;
 }
 
+/**
+ * Is this base URL a destination that may be handed a 1Claw credential?
+ *
+ * Only two things qualify: the sidecar listening on loopback inside this very
+ * container, and 1Claw's own Shroud. Everything else — including a perfectly
+ * reasonable `OPENAI_BASE_URL=https://openrouter.ai/api/v1` — is a third party,
+ * and a third party must never receive the agent's vault token.
+ *
+ * The host list is deliberately hardcoded rather than read from an env var.
+ * `OPENAI_BASE_URL` and `ONECLAW_SHROUD_URL` are both tenant-settable, so
+ * deriving "is this ours?" from the environment would just restate the bug in
+ * another variable: a configurable base is not a host pin.
+ */
+export function baseUrlMayHold1ClawCredential(baseUrl: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    return false;
+  }
+
+  // The in-container sidecar. Loopback only — a LAN address is someone else's
+  // machine, and `localhost` can be re-pointed by /etc/hosts.
+  if (url.hostname === "127.0.0.1" || url.hostname === "::1" || url.hostname === "[::1]") {
+    return true;
+  }
+
+  // 1Claw's own Shroud, over TLS. Suffix match is anchored on a dot so that
+  // `shroud.1claw.co.evil.example` and `not1claw.co` both fail.
+  if (url.protocol !== "https:") {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  return ONECLAW_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+}
+
+const ONECLAW_DOMAINS = ["1claw.co", "1claw.xyz"];
+
 function resolveModelName(
   provider?: string,
   model?: string,
@@ -108,7 +146,7 @@ export async function setupHermesRuntime(
     !process.env.ONECLAW_AGENT_API_KEY.startsWith("eyJ")
       ? process.env.ONECLAW_AGENT_API_KEY
       : "";
-  const modelApiKey = ocvKey || jwt || "";
+  const oneClawCredential = ocvKey || jwt || "";
 
   // Shroud requires an X-Shroud-Provider header naming the upstream. Prefer an
   // explicitly-injected provider hint (same env the dashboard bridge reads:
@@ -123,6 +161,29 @@ export async function setupHermesRuntime(
     undefined;
 
   const sidecarBaseUrl = resolveSidecarBaseUrl(shroudEnabled);
+
+  // Which key the provider sends depends on *where it is sending it*, not on
+  // whether Shroud is enabled. With Shroud off, the base URL comes from the
+  // tenant's own `OPENAI_BASE_URL`; attaching the agent's vault credential to
+  // that would hand a third-party host a token with the agent's scopes.
+  // Such a host gets the tenant's own provider key, which is what it expects
+  // anyway — the previous behaviour silently replaced that key with a JWT the
+  // host could not use, so this fixes the benign misconfiguration too.
+  const sendsTo1Claw = baseUrlMayHold1ClawCredential(sidecarBaseUrl);
+  const modelApiKey = sendsTo1Claw
+    ? oneClawCredential
+    : process.env.OPENAI_API_KEY || "";
+
+  if (!sendsTo1Claw && oneClawCredential) {
+    // `sidecarBaseUrl` may be unparseable — that is one of the ways
+    // `baseUrlMayHold1ClawCredential` returns false — so don't re-parse it here.
+    console.warn(
+      `[1claw] OPENAI_BASE_URL points at ${sidecarBaseUrl}, which is not ` +
+        `1Claw — sending your OPENAI_API_KEY instead of the agent credential. ` +
+        `Enable Shroud on this agent to route LLM traffic through 1Claw.`,
+    );
+  }
+
   await patchHermesModel(hermesDir, {
     sidecarBaseUrl,
     model: resolveModelName(options.llmProvider, options.llmModel),
