@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, execSync, type ChildProcess } from "node:child_process";
+import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { parseArgs } from "node:util";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -37,8 +37,11 @@ function resolveEnvFilePath(options: SidecarOptions): string {
 
 function findBinary(): string | null {
   try {
+    // Both operands are module constants, so this was never injectable — but a
+    // shell is not needed to look a binary up, and a template literal in an
+    // execSync is the shape worth not having anywhere.
     const where = process.platform === "win32" ? "where" : "which";
-    return execSync(`${where} ${SIDECAR_BINARY}`, { encoding: "utf-8" }).trim();
+    return execFileSync(where, [SIDECAR_BINARY], { encoding: "utf-8" }).trim();
   } catch {
     return null;
   }
@@ -56,11 +59,16 @@ function installSidecar(): string {
   console.error(`[1claw-hermes] ${SIDECAR_BINARY} not found — downloading install script ...`);
   const tmpScript = path.join(os.tmpdir(), `shroud-sidecar-install-${Date.now()}.sh`);
   try {
-    execSync(`curl -fsSL -o ${tmpScript} ${INSTALL_SCRIPT}`, {
+    // argv arrays, not a shell string. `tmpScript` embeds `os.tmpdir()`, which
+    // honours `TMPDIR`, so a temp directory containing a space produced a
+    // mangled command and one containing `;` or `$(…)` executed. Same shape as
+    // the `1claw setup` injection Aikido flagged in the CLI; found by sweeping
+    // for the rest of the class rather than reported.
+    execFileSync("curl", ["-fsSL", "-o", tmpScript, INSTALL_SCRIPT], {
       stdio: "inherit",
     });
     fs.chmodSync(tmpScript, 0o700);
-    execSync(`sh ${tmpScript}`, {
+    execFileSync("sh", [tmpScript], {
       stdio: "inherit",
       env: { ...process.env, PREFIX: path.dirname(localPath) },
     });
