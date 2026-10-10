@@ -10,8 +10,6 @@ import { expandTilde, resolveDotEnvPath } from "../dotenv-path.js";
 const SIDECAR_BINARY = "shroud-sidecar";
 const DEFAULT_LISTEN = ":8080";
 const HEALTH_URL = "http://127.0.0.1:8080/healthz";
-const INSTALL_SCRIPT =
-  "https://raw.githubusercontent.com/1clawAI/1claw-shroud-sidecar/main/install.sh";
 
 export interface SidecarOptions {
   /** Override listen address (default: `:8080`). */
@@ -22,7 +20,10 @@ export interface SidecarOptions {
   model?: string;
   /** Path to .env to read credentials from (default: package root .env). */
   envPath?: string;
-  /** Skip auto-install if binary not found (default: false — will try install.sh). */
+  /**
+   * Retained for compatibility and ignored: nothing is installed any more.
+   * The binary comes from an optional dependency, PATH, or a local build.
+   */
   skipInstall?: boolean;
   /** Shroud URL override (default: https://shroud.1claw.co). */
   shroudUrl?: string;
@@ -35,57 +36,116 @@ function resolveEnvFilePath(options: SidecarOptions): string {
   return resolveDotEnvPath({});
 }
 
+/**
+ * The platform package that carries this host's binary.
+ *
+ * `@1claw/hermes` lists both targets under `optionalDependencies`, so npm
+ * installs the one whose `os`/`cpu` match and skips the other. Nothing is
+ * downloaded or executed at install time, the version is fixed by the
+ * lockfile, and npm has already verified the tarball against the integrity
+ * hash recorded there.
+ */
+function platformPackage(): string | null {
+  const key = `${process.platform}-${process.arch}`;
+  switch (key) {
+    case "linux-x64":
+      return "@1claw/shroud-sidecar-linux-x64";
+    case "darwin-arm64":
+      return "@1claw/shroud-sidecar-darwin-arm64";
+    default:
+      return null;
+  }
+}
+
+/** The binary from the installed platform package, if it is there. */
+function binaryFromPackage(): string | null {
+  const pkg = platformPackage();
+  if (!pkg) return null;
+  try {
+    // Resolve the package's manifest and take the binary beside it, rather
+            // than `require.resolve(pkg + "/bin/...")`, which needs an exports entry.
+    const manifest = require.resolve(`${pkg}/package.json`);
+    const bin = path.join(path.dirname(manifest), "bin", SIDECAR_BINARY);
+    return fs.existsSync(bin) ? bin : null;
+  } catch {
+    // Not installed: an optional dependency that did not match, or a
+    // node_modules tree without it.
+    return null;
+  }
+}
+
+/** `shroud-sidecar` on PATH, for a hand-installed or locally built binary. */
 function findBinary(): string | null {
   try {
-    // Both operands are module constants, so this was never injectable — but a
-    // shell is not needed to look a binary up, and a template literal in an
-    // execSync is the shape worth not having anywhere.
+    // `execFileSync`, not a shell: both operands are module constants so this
+    // was never injectable, but a shell is not needed to look a binary up.
     const where = process.platform === "win32" ? "where" : "which";
-    return execFileSync(where, [SIDECAR_BINARY], { encoding: "utf-8" }).trim();
+    return execFileSync(where, [SIDECAR_BINARY], { encoding: "utf-8" })
+      .split("\n")[0]
+      .trim() || null;
   } catch {
     return null;
   }
-
 }
 
 function localBin(): string {
   return path.join(os.homedir(), ".local", "bin", SIDECAR_BINARY);
 }
 
-function installSidecar(): string {
-  const localPath = localBin();
-  if (fs.existsSync(localPath)) return localPath;
+/**
+ * Where the sidecar binary is, or an error saying how to get one.
+ *
+ * Hermes used to fetch `install.sh` from the sidecar repo's `main` branch and
+ * pipe it to `sh` when the binary was missing. The script itself was sound —
+ * release artifacts, sha256 verification, version pinning — but the
+ * arrangement was not:
+ *
+ *   - its checksum step warned and continued when `checksums.txt` could not be
+ *     fetched, so withholding one file downgraded the install to no
+ *     verification at all;
+ *   - we fetched the script from `main`, the least pinned form of a script
+ *     built to be pinned;
+ *   - and it resolved the *latest* release at install time, so two installs a
+ *     week apart produced different binaries.
+ *
+ * A package manager already solves all three, so the binary now arrives as an
+ * optional dependency and nothing is downloaded or executed here. Production
+ * runtimes are unaffected either way: `runtime-base` builds the sidecar from
+ * source and bakes it into the image, so this path only ever served local use.
+ *
+ * Order: the platform package, then PATH (a hand-installed or locally built
+ * binary), then `~/.local/bin` (where the old installer put it, so an existing
+ * machine keeps working).
+ */
+function resolveSidecarBinary(): string {
+  const fromPackage = binaryFromPackage();
+  if (fromPackage) return fromPackage;
 
-  console.error(`[1claw-hermes] ${SIDECAR_BINARY} not found — downloading install script ...`);
-  const tmpScript = path.join(os.tmpdir(), `shroud-sidecar-install-${Date.now()}.sh`);
-  try {
-    // argv arrays, not a shell string. `tmpScript` embeds `os.tmpdir()`, which
-    // honours `TMPDIR`, so a temp directory containing a space produced a
-    // mangled command and one containing `;` or `$(…)` executed. Same shape as
-    // the `1claw setup` injection Aikido flagged in the CLI; found by sweeping
-    // for the rest of the class rather than reported.
-    execFileSync("curl", ["-fsSL", "-o", tmpScript, INSTALL_SCRIPT], {
-      stdio: "inherit",
-    });
-    fs.chmodSync(tmpScript, 0o700);
-    execFileSync("sh", [tmpScript], {
-      stdio: "inherit",
-      env: { ...process.env, PREFIX: path.dirname(localPath) },
-    });
-  } catch (err) {
-    throw new Error(
-      `Failed to install ${SIDECAR_BINARY}. Install manually: curl -fsSL ${INSTALL_SCRIPT} | sh`,
-    );
-  } finally {
-    try { fs.unlinkSync(tmpScript); } catch { /* best-effort cleanup */ }
-  }
+  const onPath = findBinary();
+  if (onPath) return onPath;
 
-  if (!fs.existsSync(localPath)) {
+  const legacy = localBin();
+  if (fs.existsSync(legacy)) return legacy;
+
+  const pkg = platformPackage();
+  if (!pkg) {
     throw new Error(
-      `Install script ran but binary not found at ${localPath}. Check install output above.`,
+      `No prebuilt ${SIDECAR_BINARY} for ${process.platform}/${process.arch} ` +
+        `(supported: linux/x64, darwin/arm64). Build it from source: ` +
+        `go build -o ~/.local/bin/${SIDECAR_BINARY} . in 1claw-shroud-sidecar.`,
     );
   }
-  return localPath;
+  return (() => {
+    throw new Error(
+      `${SIDECAR_BINARY} not found. It ships as an optional dependency, so the ` +
+        `usual cause is an install that skipped optional packages ` +
+        `(\`--no-optional\`, or a lockfile from another platform).\n` +
+        `  Reinstall:        npm install\n` +
+        `  Or install it:    npm install ${pkg}\n` +
+        `  Or build it:      go build -o ~/.local/bin/${SIDECAR_BINARY} .  ` +
+        `(in 1claw-shroud-sidecar)`,
+    );
+  })();
 }
 
 function loadCredsFromEnv(envPath: string): Record<string, string> {
@@ -130,15 +190,7 @@ export function startSidecar(options: SidecarOptions = {}): ChildProcess {
     );
   }
 
-  let bin = findBinary();
-  if (!bin) {
-    if (options.skipInstall) {
-      throw new Error(
-        `${SIDECAR_BINARY} not on PATH. Install: curl -fsSL ${INSTALL_SCRIPT} | sh`,
-      );
-    }
-    bin = installSidecar();
-  }
+  const bin = resolveSidecarBinary();
 
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,

@@ -34,5 +34,9 @@
     "tsx": "^4.0.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.0"
+  },
+  "optionalDependencies": {
+    "@1claw/shroud-sidecar-linux-x64": "^1.0.0",
+    "@1claw/shroud-sidecar-darwin-arm64": "^1.0.0"
   }
 }
