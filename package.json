@@ -27,7 +27,7 @@
     "openai": "^4.0.0",
     "twitter-api-v2": "^1.29.0",
     "yaml": "^2.6.0",
-    "zod": "^3.22.0"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
